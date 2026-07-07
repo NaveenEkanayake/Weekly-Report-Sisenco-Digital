@@ -1,18 +1,46 @@
-import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Search, LogOut, Sparkles, User as UserIcon } from 'lucide-react';
+import { Search, Sparkles, X } from 'lucide-react';
 
-const Navbar = ({ theme = 'dark', toggleTheme }) => {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
+const Navbar = ({ theme = 'dark', toggleTheme, onSearch }) => {
+  const { user } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+  const inputRef = useRef(null);
+  const isDark = theme === 'dark';
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  // Keyboard shortcut: Ctrl+K to focus search
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+      if (e.key === 'Escape') {
+        setSearchQuery('');
+        inputRef.current?.blur();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+    if (onSearch) {
+      onSearch(value);
+    }
   };
 
-  const isDark = theme === 'dark';
+  const clearSearch = () => {
+    setSearchQuery('');
+    if (onSearch) {
+      onSearch('');
+    }
+    inputRef.current?.focus();
+  };
 
   return (
     <nav className={`sticky top-0 z-50 backdrop-blur-md transition-colors duration-300 border-b ${
@@ -29,87 +57,70 @@ const Navbar = ({ theme = 'dark', toggleTheme }) => {
                 <Sparkles className="w-5 h-5 text-white" />
               </div>
               <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 bg-clip-text text-transparent">
-                Jobsly
+                Weekly Reports
               </span>
             </Link>
           </div>
 
-          {/* Mock Search Bar (21.dev style) */}
-          <div className="hidden md:flex flex-1 max-w-md mx-8">
-            <div className={`relative w-full flex items-center rounded-lg border px-3 py-1.5 transition-all ${
-              isDark 
-                ? 'bg-zinc-900/60 border-zinc-800 text-zinc-400 focus-within:border-zinc-700' 
-                : 'bg-zinc-100/80 border-zinc-200 text-zinc-500 focus-within:border-zinc-300'
-            }`}>
-              <Search className="w-4 h-4 mr-2 opacity-65" />
-              <input 
-                type="text" 
-                placeholder="Search reports, projects, team..." 
-                className="bg-transparent border-none text-xs focus:outline-none w-full placeholder-zinc-500"
-                disabled
-              />
-              <div className={`text-[10px] px-1.5 py-0.5 rounded border font-sans pointer-events-none flex items-center gap-0.5 ${
-                isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-500' : 'bg-white border-zinc-300 text-zinc-400'
-              }`}>
-                <span>Ctrl</span><span>K</span>
-              </div>
-            </div>
-          </div>
-
-          {/* User Menu & Actions */}
+          {/* Functional Search Bar */}
           {user && (
-            <div className="flex items-center space-x-4">
-              {/* Theme Toggle in Navbar */}
-              {toggleTheme && (
-                <button
-                  onClick={toggleTheme}
-                  className={`rounded-full p-2 transition-colors cursor-pointer ${
-                    isDark
-                      ? 'bg-zinc-900 text-yellow-400 hover:bg-zinc-800'
-                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                  }`}
-                  aria-label="Toggle theme"
-                >
-                  {isDark ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-                    </svg>
-                  )}
-                </button>
-              )}
-
-              {/* User details */}
-              <div className="flex items-center space-x-3">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shadow-sm ${
-                  isDark ? 'bg-indigo-650 text-white' : 'bg-indigo-100 text-indigo-700'
-                }`}>
-                  {user.name?.charAt(0).toUpperCase()}
-                </div>
-                <div className="hidden lg:flex flex-col text-left">
-                  <span className="text-xs font-semibold leading-tight">{user.name}</span>
-                  <span className={`text-[10px] ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                    {user.role} ({user.department || 'General'})
-                  </span>
-                </div>
+            <div className="hidden md:flex flex-1 max-w-md mx-8">
+              <div className={`relative w-full flex items-center rounded-lg border px-3 py-1.5 transition-all ${
+                searchFocused
+                  ? isDark 
+                    ? 'border-indigo-500 ring-1 ring-indigo-500' 
+                    : 'border-indigo-500 ring-1 ring-indigo-500'
+                  : isDark 
+                    ? 'bg-zinc-900/60 border-zinc-800 text-zinc-400 focus-within:border-zinc-700' 
+                    : 'bg-zinc-100/80 border-zinc-200 text-zinc-500 focus-within:border-zinc-300'
+              }`}>
+                <Search className="w-4 h-4 mr-2 opacity-65 flex-shrink-0" />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  placeholder="Search reports by project, tasks, keywords..."
+                  className="bg-transparent border-none text-xs focus:outline-none w-full placeholder-zinc-500"
+                />
+                {searchQuery ? (
+                  <button onClick={clearSearch} className="flex-shrink-0 p-0.5 hover:opacity-70 cursor-pointer">
+                    <X size={14} className="opacity-65" />
+                  </button>
+                ) : (
+                  <div className={`text-[10px] px-1.5 py-0.5 rounded border font-sans flex items-center gap-0.5 ${
+                    isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-500' : 'bg-white border-zinc-300 text-zinc-400'
+                  }`}>
+                    <span>Ctrl</span><span>K</span>
+                  </div>
+                )}
               </div>
-
-              {/* Logout Button */}
-              <button
-                onClick={handleLogout}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
-                  isDark 
-                    ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800' 
-                    : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border border-zinc-200'
-                }`}
-              >
-                <LogOut size={13} />
-                <span className="hidden sm:inline">Logout</span>
-              </button>
             </div>
+          )}
+
+          {/* Right side - Theme toggle only (user moved to sidebar) */}
+          {user && toggleTheme && (
+            <button
+              onClick={toggleTheme}
+              className={`rounded-full p-2 transition-colors cursor-pointer ${
+                isDark
+                  ? 'bg-zinc-900 text-yellow-400 hover:bg-zinc-800'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+              }`}
+              aria-label="Toggle theme"
+            >
+              {isDark ? (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+                </svg>
+              )}
+            </button>
           )}
         </div>
       </div>

@@ -217,23 +217,102 @@ export const forgotPassword = async (req, res) => {
 
     console.log(`🔑 PASSWORD RESET OTP FOR ${email}: ${otp}`);
 
+    // Professional branded email template
     const mailOptions = {
-      from: `"Jobsly Weekly Reports" <${process.env.EMAIL_USER || 'no-reply@jobsly.com'}>`,
+      from: `"Weekly Reports" <${process.env.EMAIL_USER || 'noreply@weeklyreports.com'}>`,
       to: email,
-      subject: 'Password Reset Verification Code - Jobsly',
-      text: `Your password reset verification code is: ${otp}. It will expire in 15 minutes.`,
+      subject: '🔐 Password Reset Verification Code — Weekly Reports',
+      text: `Your password reset verification code is: ${otp}. It will expire in 15 minutes. If you did not request this, please ignore this email.`,
       html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-          <h2 style="color: #4f46e5; text-align: center;">Jobsly Password Reset</h2>
-          <p>Hello,</p>
-          <p>You requested a password reset for your Jobsly Weekly Report Manager account. Please use the following 6-digit verification code to complete the process:</p>
-          <div style="background-color: #f3f4f6; padding: 15px; text-align: center; border-radius: 8px; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #1f2937; margin: 20px 0;">
-            ${otp}
-          </div>
-          <p style="color: #6b7280; font-size: 14px;">This code will expire in 15 minutes. If you did not request this, please ignore this email.</p>
-          <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-          <p style="text-align: center; color: #9ca3af; font-size: 12px;">© ${new Date().getFullYear()} Jobsly. All rights reserved.</p>
-        </div>
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f5; padding: 40px 20px;">
+            <tr>
+              <td align="center">
+                <!-- Main Card -->
+                <table width="480" cellpadding="0" cellspacing="0" style="max-width: 480px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);">
+                  
+                  <!-- Header Banner -->
+                  <tr>
+                    <td style="background: linear-gradient(135deg, #4f46e5, #7c3aed); padding: 32px 40px; text-align: center;">
+                      <table cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+                        <tr>
+                          <td style="background-color: rgba(255,255,255,0.15); border-radius: 12px; padding: 8px 16px;">
+                            <span style="color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: 0.5px;">📋 Weekly Reports</span>
+                          </td>
+                        </tr>
+                      </table>
+                      <h1 style="color: #ffffff; font-size: 22px; font-weight: 600; margin: 20px 0 0 0; letter-spacing: -0.3px;">
+                        Password Reset Request
+                      </h1>
+                    </td>
+                  </tr>
+
+                  <!-- Body Content -->
+                  <tr>
+                    <td style="padding: 36px 40px 24px;">
+                      <p style="color: #18181b; font-size: 15px; line-height: 1.6; margin: 0 0 8px 0;">
+                        Hello <strong style="color: #4f46e5;">${user.name || 'there'}</strong>,
+                      </p>
+                      <p style="color: #52525b; font-size: 14px; line-height: 1.7; margin: 0 0 24px 0;">
+                        We received a request to reset the password for your Weekly Reports account. 
+                        Use the verification code below to complete the process. 
+                        <strong style="color: #18181b;">This code expires in 15 minutes.</strong>
+                      </p>
+
+                      <!-- OTP Code Box -->
+                      <table cellpadding="0" cellspacing="0" style="margin: 0 auto 28px;">
+                        <tr>
+                          <td style="background-color: #f4f4f5; border-radius: 12px; padding: 20px 36px; border: 1px solid #e4e4e7; text-align: center;">
+                            <span style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #4f46e5; font-family: 'Courier New', monospace;">
+                              ${otp.split('').join(' ')}
+                            </span>
+                          </td>
+                        </tr>
+                      </table>
+
+                      <!-- Security Notice -->
+                      <table cellpadding="0" cellspacing="0" style="background-color: #fefce8; border-radius: 10px; border: 1px solid #fde68a; margin-bottom: 24px;">
+                        <tr>
+                          <td style="padding: 14px 18px;">
+                            <p style="color: #92400e; font-size: 12px; line-height: 1.5; margin: 0;">
+                              🔒 <strong>Security Tip:</strong> Never share this code with anyone. 
+                              Our team will never ask for your password or verification code.
+                            </p>
+                          </td>
+                        </tr>
+                      </table>
+
+                      <p style="color: #a1a1aa; font-size: 12px; line-height: 1.6; margin: 0 0 8px 0;">
+                        If you didn't request a password reset, you can safely ignore this email. 
+                        Your account remains secure.
+                      </p>
+                    </td>
+                  </tr>
+
+                  <!-- Footer -->
+                  <tr>
+                    <td style="background-color: #fafafa; border-top: 1px solid #f4f4f5; padding: 24px 40px; text-align: center;">
+                      <p style="color: #a1a1aa; font-size: 11px; line-height: 1.6; margin: 0;">
+                        Weekly Report Manager &bull; Team Dashboard<br>
+                        © ${new Date().getFullYear()} Weekly Reports. All rights reserved.
+                      </p>
+                      <p style="color: #d4d4d8; font-size: 10px; line-height: 1.5; margin: 8px 0 0 0;">
+                        This is an automated message. Please do not reply to this email.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
       `,
     };
 

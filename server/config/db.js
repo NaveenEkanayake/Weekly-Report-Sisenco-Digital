@@ -10,17 +10,17 @@ const connectDB = async () => {
 
     // Seed default manager user if no users exist
     const userCount = await User.countDocuments();
-    let systemUser = await User.findOne({ email: 'system@jobsly.com' });
+    let    systemUser = await User.findOne({ email: 'system@weeklyreports.com' });
     
     if (userCount === 0 && !systemUser) {
       systemUser = await User.create({
         name: 'System Manager',
-        email: 'system@jobsly.com',
+        email: 'system@weeklyreports.com',
         password: 'Password123!',
         role: 'Manager',
         department: 'Operations',
       });
-      console.log('🌱 Seeded default Manager: system@jobsly.com / Password123!');
+      console.log('🌱 Seeded default Manager: system@weeklyreports.com / Password123!');
     } else if (!systemUser) {
       // Find any manager or any user to assign projects
       systemUser = await User.findOne({ role: 'Manager' }) || await User.findOne();

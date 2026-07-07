@@ -9,6 +9,7 @@ import ChatAssistant from '../components/Common/ChatAssistant';
 import reportService from '../services/reportService';
 import { useAuth } from '../context/AuthContext';
 import { Plus } from 'lucide-react';
+import { StatsGridSkeleton, TableSkeleton } from '../components/Common/LoadingSkeleton';
 
 const MemberDashboard = () => {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
@@ -17,6 +18,7 @@ const MemberDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingReport, setEditingReport] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Notification states
   const [toastMessage, setToastMessage] = useState('');
@@ -110,6 +112,16 @@ const MemberDashboard = () => {
     }
   };
 
+  // Filter reports by search query
+  const filteredReports = searchQuery
+    ? reports.filter(r =>
+        r.tasksCompleted?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.tasksPlanned?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.blockers?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.project?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : reports;
+
   const totalReports = reports.length;
   const submittedCount = reports.filter(r => r.status === 'Submitted').length;
   const draftsCount = reports.filter(r => r.status === 'Draft').length;
@@ -118,7 +130,7 @@ const MemberDashboard = () => {
     <div className={`min-h-screen flex flex-col transition-colors duration-300 ${
       isDark ? 'bg-zinc-950 text-zinc-100' : 'bg-zinc-50 text-zinc-900'
     }`}>
-      <Navbar theme={theme} toggleTheme={toggleTheme} />
+      <Navbar theme={theme} toggleTheme={toggleTheme} onSearch={setSearchQuery} />
       
       {/* Toast Notification at top right */}
       <Toast 
@@ -152,28 +164,27 @@ const MemberDashboard = () => {
             </div>
 
             {/* Stats Grid */}
-            <StatsGrid 
-              totalReports={totalReports} 
-              submittedCount={submittedCount} 
-              draftsCount={draftsCount} 
-              isDark={isDark} 
-            />
+            {loading ? (
+              <StatsGridSkeleton isDark={isDark} count={3} />
+            ) : (
+              <StatsGrid 
+                totalReports={totalReports} 
+                submittedCount={submittedCount} 
+                draftsCount={draftsCount} 
+                isDark={isDark} 
+              />
+            )}
 
             {/* Reports List */}
             <div className={`rounded-xl border ${
               isDark ? 'bg-zinc-900/20 border-zinc-800' : 'bg-white border-zinc-200'
             }`}>
-              <div className={`px-6 py-4 border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-                <h2 className="text-sm font-semibold">Reports History</h2>
-              </div>
               
               {loading ? (
-                <div className="p-12 flex justify-center">
-                  <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                </div>
+                <TableSkeleton isDark={isDark} rows={5} columns={7} />
               ) : (
                 <ReportTable 
-                  reports={reports} 
+                  reports={filteredReports} 
                   role="Team Member" 
                   onEdit={handleOpenEditModal} 
                   onDelete={handleDelete} 

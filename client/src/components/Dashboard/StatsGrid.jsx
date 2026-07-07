@@ -54,7 +54,11 @@ const StatsGrid = ({
   }
 
   return (
-    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${cards.length} gap-6`}>
+    <div className={`grid grid-cols-1 sm:grid-cols-2 ${
+        cards.length > 4 ? 'lg:grid-cols-3 xl:grid-cols-4' :
+        cards.length > 3 ? 'lg:grid-cols-3' :
+        'lg:grid-cols-2'
+      } gap-6`}>
       {cards.map((stat, idx) => (
         <div key={idx} className={`p-6 rounded-xl border flex items-center gap-4 transition-all duration-300 hover:shadow-md ${
           isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-white border-zinc-200'

@@ -88,7 +88,7 @@ Here is an analysis of the **${totalReports} total reports** in the system:
   }
 
   // General Q&A Fallback Response
-  return `🤖 **Jobsly AI (Local Analysis Mode)**
+  return `🤖 **AI Assistant (Local Analysis Mode)**
 I found **${reports.length} report records** in the database. 
 
 Since you asked a custom question: *"${message}"*, you can query standard insights like:
@@ -138,8 +138,7 @@ export const chatWithAssistant = async (req, res) => {
 
     // Gemini API Setup
     const formattedReports = formatReportsForAI(reports);
-    const systemPrompt = `You are Jobsly AI, an advanced management advisor and team reporter chatbot.
-Below is the database of the team's weekly reports containing completed tasks, planned tasks, hours worked, and blockers.
+    const systemPrompt = `You are a helpful AI assistant for a Weekly Report Manager system. You analyze team reports containing completed tasks, planned tasks, hours worked, and blockers.
 Your job is to answer the manager's question clearly, professionally, and concisely using the reports data.
 If the query asks to summarize, highlight blockers, analyze workload, or list accomplishments, format your answer with markdown bullet points and headings.
 

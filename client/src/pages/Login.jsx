@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, EyeOff, LogIn, Sparkles, FileText, Users, TrendingUp, Shield } from 'lucide-react';
+import { Eye, EyeOff, LogIn, FileText, Users, TrendingUp, Shield } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -330,16 +330,7 @@ const Login = () => {
               {view === 'login' && (
                 <motion.div className="mb-6" variants={itemVariants}>
                   <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
-                    Welcome back{' '}
-                    <span className="text-indigo-500 flex items-center gap-1">
-                      Jobsly
-                      <motion.span
-                        animate={{ rotate: [0, 360] }}
-                        transition={{ duration: 2.5, repeat: Infinity, ease: 'linear' }}
-                      >
-                        <Sparkles size={20} className="text-indigo-500" />
-                      </motion.span>
-                    </span>
+                    Welcome back
                   </h1>
                   <p className={`text-sm ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
                     Please enter your details to sign in.
@@ -619,7 +610,7 @@ const Login = () => {
                 <p className={`text-xs font-semibold uppercase tracking-wider ${
                   theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
                 }`}>
-                  Enterprise features
+                  Platform features
                 </p>
                 {[
                   { icon: FileText, text: 'Structured weekly report templates' },

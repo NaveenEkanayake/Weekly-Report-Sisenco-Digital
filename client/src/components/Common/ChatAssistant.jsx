@@ -6,8 +6,7 @@ const ChatAssistant = ({ theme = 'dark' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
-      sender: 'ai',
-      text: '👋 Hi! I am Jobsly AI. I can summarize team reports, highlight blocker patterns, and analyze workloads. How can I help you today?',
+      sender: 'ai',              text: '👋 Hi! I am the AI Assistant. I can summarize team reports, highlight blocker patterns, and analyze workloads. How can I help you today?',
       time: new Date()
     }
   ]);
@@ -99,7 +98,7 @@ const ChatAssistant = ({ theme = 'dark' }) => {
                 <Sparkles size={15} />
               </div>
               <div>
-                <h4 className="text-xs font-bold leading-tight">Jobsly AI Assistant</h4>
+                <h4 className="text-xs font-bold leading-tight">AI Assistant</h4>
                 <span className="text-[9px] opacity-75">Team Intelligence Engine</span>
               </div>
             </div>

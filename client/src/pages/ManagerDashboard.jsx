@@ -1,14 +1,57 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Navbar from '../components/Common/Navbar';
 import Sidebar from '../components/Common/Sidebar';
 import Toast from '../components/Common/Toast';
 import StatsGrid from '../components/Dashboard/StatsGrid';
 import ReportTable from '../components/Dashboard/ReportTable';
 import ProjectList from '../components/Dashboard/ProjectList';
+import FilterBar from '../components/Dashboard/FilterBar';
+import SubmissionCompliance from '../components/Dashboard/SubmissionCompliance';
+import ReportDetailModal from '../components/Dashboard/ReportDetailModal';
+import ProjectFormModal from '../components/Dashboard/ProjectFormModal';
+import AnalyticsCharts from '../components/Charts/AnalyticsCharts';
 import ChatAssistant from '../components/Common/ChatAssistant';
+import { StatsGridSkeleton, TableSkeleton, ChartSkeleton } from '../components/Common/LoadingSkeleton';
 import reportService from '../services/reportService';
 import authService from '../services/authService';
-import { Plus, FolderKanban, BookOpen, Clock, Filter, RotateCcw } from 'lucide-react';
+import { BookOpen, RefreshCw } from 'lucide-react';
+
+// Helper to get date ranges based on time period
+const getDateRange = (period) => {
+  const now = new Date();
+  const start = new Date();
+
+  switch (period) {
+    case 'week': {
+      const day = start.getDay();
+      const diff = start.getDate() - day + (day === 0 ? -6 : 1);
+      start.setDate(diff);
+      start.setHours(0, 0, 0, 0);
+      break;
+    }
+    case 'month':
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      break;
+    case 'quarter': {
+      const qMonth = Math.floor(start.getMonth() / 3) * 3;
+      start.setMonth(qMonth, 1);
+      start.setHours(0, 0, 0, 0);
+      break;
+    }
+    case 'year':
+      start.setMonth(0, 1);
+      start.setHours(0, 0, 0, 0);
+      break;
+    default: // 'all' - no date filter
+      return { startDate: null, endDate: null };
+  }
+
+  return {
+    startDate: start.toISOString().split('T')[0],
+    endDate: now.toISOString().split('T')[0],
+  };
+};
 
 const ManagerDashboard = () => {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
@@ -17,51 +60,91 @@ const ManagerDashboard = () => {
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+  const [refreshing, setRefreshing] = useState(false);
+
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
-  const [projectForm, setProjectForm] = useState({
-    name: '',
-    description: '',
-    category: 'Other',
-    status: 'Active',
-  });
 
+  const [timePeriod, setTimePeriod] = useState('week');
   const [filters, setFilters] = useState({
     user: '',
     project: '',
     startDate: '',
     endDate: '',
   });
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [selectedReport, setSelectedReport] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState('success');
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   const isDark = theme === 'dark';
+  const pollingRef = useRef(null);
 
+  // Real-time auto-polling: refresh data every 15 seconds
+  // and also refresh when tab regains focus
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    const startPolling = () => {
+      // Initial fetch already happened on mount
+      pollingRef.current = setInterval(async () => {
+        try {
+          const dateRange = getDateRange(timePeriod);
+          const analyticsFilters = dateRange.startDate
+            ? { startDate: dateRange.startDate, endDate: dateRange.endDate }
+            : {};
 
-  useEffect(() => {
-    localStorage.setItem('theme', theme);
-    document.documentElement.className = theme;
-  }, [theme]);
+          const [analyticsRes, reportsRes, projectsRes, usersRes] = await Promise.all([
+            reportService.getDashboardAnalytics(analyticsFilters),
+            reportService.getReports({ ...filters, ...analyticsFilters }),
+            reportService.getProjects(),
+            authService.getAllUsers(),
+          ]);
 
-  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+          setAnalytics(analyticsRes.data);
+          setReports(reportsRes.data || []);
+          setProjects(projectsRes.data || []);
+          setUsers(usersRes.data || []);
+          setLastUpdated(new Date());
+        } catch (err) {
+          // Silent fail on polling to avoid spamming errors
+          console.debug('Auto-refresh polling failed (expected if server is busy):', err.message);
+        }
+      }, 10000); // Refresh every 10 seconds
+    };
 
-  const showToast = (msg, type = 'success') => {
-    setToastMessage(msg);
-    setToastType(type);
-  };
+    // Re-fetch when tab becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchDashboardData(true);
+      }
+    };
 
-  const fetchDashboardData = async () => {
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    startPolling();
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [timePeriod, filters]);
+
+  // Fetch dashboard data with current filters and period
+  const fetchDashboardData = useCallback(async (isRefresh = false) => {
     try {
-      setLoading(true);
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+
+      // Apply time period to date filters for analytics
+      const dateRange = getDateRange(timePeriod);
+      const analyticsFilters = dateRange.startDate ? {
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+      } : {};
+
       const [analyticsRes, reportsRes, projectsRes, usersRes] = await Promise.all([
-        reportService.getDashboardAnalytics(),
-        reportService.getReports(filters),
+        reportService.getDashboardAnalytics(analyticsFilters),
+        reportService.getReports({ ...filters, ...analyticsFilters }),
         reportService.getProjects(),
         authService.getAllUsers(),
       ]);
@@ -75,6 +158,40 @@ const ManagerDashboard = () => {
       showToast('Failed to load dashboard data', 'error');
     } finally {
       setLoading(false);
+      setRefreshing(false);
+    }
+  }, [timePeriod, filters]);
+
+  // Initial load
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  // Re-fetch when time period changes
+  useEffect(() => {
+    if (!loading) fetchDashboardData(true);
+  }, [timePeriod]);
+
+  useEffect(() => {
+    localStorage.setItem('theme', theme);
+    document.documentElement.className = theme;
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+
+  const showToast = (msg, type = 'success') => {
+    setToastMessage(msg);
+    setToastType(type);
+  };
+
+  const handleTimePeriodChange = (period) => {
+    setTimePeriod(period);
+    // Reset custom date filters when using presets
+    if (period !== 'all') {
+      const dateRange = getDateRange(period);
+      setFilters(prev => ({ ...prev, startDate: dateRange.startDate || '', endDate: dateRange.endDate || '' }));
+    } else {
+      setFilters(prev => ({ ...prev, startDate: '', endDate: '' }));
     }
   };
 
@@ -82,8 +199,14 @@ const ManagerDashboard = () => {
     const newFilters = { ...filters, [e.target.name]: e.target.value };
     setFilters(newFilters);
     try {
-      const response = await reportService.getReports(newFilters);
-      setReports(response.data || []);
+      const dateRange = getDateRange(timePeriod);
+      const analyticsFilters = dateRange.startDate ? { startDate: dateRange.startDate, endDate: dateRange.endDate } : {};
+      const [reportsRes, analyticsRes] = await Promise.all([
+        reportService.getReports({ ...newFilters, ...analyticsFilters }),
+        reportService.getDashboardAnalytics(analyticsFilters),
+      ]);
+      setReports(reportsRes.data || []);
+      setAnalytics(analyticsRes.data);
     } catch (err) {
       console.error('Error filtering reports:', err);
     }
@@ -92,47 +215,57 @@ const ManagerDashboard = () => {
   const resetFilters = async () => {
     const defaultFilters = { user: '', project: '', startDate: '', endDate: '' };
     setFilters(defaultFilters);
+    setTimePeriod('week');
+    const dateRange = getDateRange('week');
+    const analyticsFilters = { startDate: dateRange.startDate, endDate: dateRange.endDate };
     try {
-      const response = await reportService.getReports(defaultFilters);
-      setReports(response.data || []);
+      const [reportsRes, analyticsRes] = await Promise.all([
+        reportService.getReports({ ...defaultFilters, ...analyticsFilters }),
+        reportService.getDashboardAnalytics(analyticsFilters),
+      ]);
+      setReports(reportsRes.data || []);
+      setAnalytics(analyticsRes.data);
     } catch (err) {
       console.error('Error resetting filters:', err);
     }
   };
 
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+  };
+
+  // Filter reports by search query (client-side)
+  const filteredReports = searchQuery
+    ? reports.filter(r =>
+        r.tasksCompleted?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.tasksPlanned?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.blockers?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.project?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.user?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : reports;
+
   const openCreateProjectModal = () => {
     setEditingProject(null);
-    setProjectForm({ name: '', description: '', category: 'Other', status: 'Active' });
     setShowProjectModal(true);
   };
 
   const openEditProjectModal = (project) => {
     setEditingProject(project);
-    setProjectForm({
-      name: project.name,
-      description: project.description || '',
-      category: project.category,
-      status: project.status,
-    });
     setShowProjectModal(true);
   };
 
-  const handleProjectFormChange = (e) => {
-    setProjectForm({ ...projectForm, [e.target.name]: e.target.value });
-  };
-
-  const handleProjectSubmit = async (e) => {
-    e.preventDefault();
+  const handleProjectSubmit = async (formData) => {
     try {
       if (editingProject) {
-        await reportService.updateProject(editingProject._id, projectForm);
+        await reportService.updateProject(editingProject._id, formData);
         showToast('Project updated successfully!', 'success');
       } else {
-        await reportService.createProject(projectForm);
+        await reportService.createProject(formData);
         showToast('Project created successfully!', 'success');
       }
       setTimeout(() => {
-        fetchDashboardData();
+        fetchDashboardData(true);
         setShowProjectModal(false);
       }, 1500);
     } catch (err) {
@@ -145,7 +278,7 @@ const ManagerDashboard = () => {
       try {
         await reportService.deleteProject(id);
         showToast('Project deleted successfully!', 'success');
-        fetchDashboardData();
+        fetchDashboardData(true);
       } catch (err) {
         showToast(err.response?.data?.message || 'Failed to delete project', 'error');
       }
@@ -156,232 +289,160 @@ const ManagerDashboard = () => {
     try {
       await reportService.updateReport(id, { status: 'Reviewed' });
       showToast('Report marked as Reviewed successfully!', 'success');
-      fetchDashboardData();
+      fetchDashboardData(true);
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to review report', 'error');
     }
   };
 
-  const getComplianceDot = (status) => {
-    const styles = {
-      Submitted: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]',
-      Pending: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse',
-      Late: 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)] animate-pulse'
-    };
-    return styles[status] || 'bg-zinc-500';
-  };
-
   return (
     <div className={`min-h-screen flex flex-col transition-colors duration-300 ${isDark ? 'bg-zinc-950 text-zinc-100' : 'bg-zinc-50 text-zinc-900'}`}>
-      <Navbar theme={theme} toggleTheme={toggleTheme} />
+      <Navbar theme={theme} toggleTheme={toggleTheme} onSearch={handleSearch} />
       <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
       <div className="flex flex-1">
         <Sidebar theme={theme} />
         <main className="flex-1 p-6 md:p-8 pb-24 md:pb-8">
           <div className="max-w-7xl mx-auto space-y-8">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Manager Dashboard</h1>
-              <p className={`text-xs mt-1 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                Monitor team activity, track weekly submission compliance, and manage active projects.
-              </p>
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <div className="flex items-center gap-3 mb-1">
+                  <h1 className="text-2xl font-bold tracking-tight">Manager Dashboard</h1>
+                  {/* Live indicator */}
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/40 text-emerald-400 border border-emerald-900/50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
+                    <span>LIVE</span>
+                  </div>
+                  {lastUpdated && (
+                    <span className={`text-[10px] ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                      Updated {lastUpdated.toLocaleTimeString()}
+                    </span>
+                  )}
+                </div>
+                <p className={`text-xs mt-1 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                  Monitor team activity, track submission compliance, and manage projects.
+                </p>
+              </div>
+              {/* Refresh Button */}
+              <button
+                onClick={() => fetchDashboardData(true)}
+                disabled={refreshing}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
+                  isDark
+                    ? 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+                    : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
+                } ${refreshing ? 'opacity-50' : ''}`}
+              >
+                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+                <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+              </button>
             </div>
-            {analytics && analytics.summary && (
-              <StatsGrid 
-                totalReports={analytics.summary.totalReports || 0} 
-                submittedCount={analytics.summary.submittedCount || 0} 
-                draftsCount={analytics.summary.draftCount || 0} 
-                openBlockersCount={analytics.summary.activeBlockers || 0} 
-                complianceRate={analytics.summary.complianceRate || 0} 
-                isDark={isDark} 
+
+            {/* Stats Grid */}
+            {loading ? (
+              <StatsGridSkeleton isDark={isDark} count={5} />
+            ) : analytics?.summary ? (
+              <StatsGrid
+                totalReports={analytics.summary.totalReports || 0}
+                submittedCount={analytics.summary.submittedCount || 0}
+                draftsCount={analytics.summary.draftCount || 0}
+                openBlockersCount={analytics.summary.activeBlockers || 0}
+                complianceRate={analytics.summary.complianceRate || 0}
+                isDark={isDark}
               />
-            )}
-            {analytics && analytics.submissionCompliance && (
+            ) : null}
+
+            {/* Analytics Charts */}
+            {loading ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ChartSkeleton isDark={isDark} />
+                <ChartSkeleton isDark={isDark} />
+                <ChartSkeleton isDark={isDark} />
+                <ChartSkeleton isDark={isDark} />
+              </div>
+            ) : analytics ? (
+              <AnalyticsCharts data={analytics} theme={theme} />
+            ) : null}
+
+            {/* Submission Compliance */}
+            {loading ? (
               <div className={`rounded-xl border ${isDark ? 'bg-zinc-900/20 border-zinc-800' : 'bg-white border-zinc-200'}`}>
                 <div className={`px-6 py-4 border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-                  <h2 className="text-sm font-semibold">Weekly Submission Compliance Checklist</h2>
-                </div>
-                <div className="overflow-x-auto w-full text-xs">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className={`border-b font-semibold ${isDark ? 'border-zinc-800 text-zinc-400' : 'border-zinc-200 text-zinc-500 bg-zinc-50'}`}>
-                        <th className="p-4">Team Member</th>
-                        <th className="p-4">Department</th>
-                        <th className="p-4">Submission Status</th>
-                        <th className="p-4">Last Updated</th>
-                      </tr>
-                    </thead>
-                    <tbody className={`divide-y ${isDark ? 'divide-zinc-800/80 text-zinc-300' : 'divide-zinc-200 text-zinc-700'}`}>
-                      {analytics.submissionCompliance.length > 0 ? (
-                        analytics.submissionCompliance.map((row, index) => (
-                          <tr key={index} className={`transition-colors ${isDark ? 'hover:bg-zinc-900/10' : 'hover:bg-zinc-50/50'}`}>
-                            <td className="p-4 font-semibold text-zinc-100">{row.user?.name}</td>
-                            <td className="p-4">{row.user?.department || 'N/A'}</td>
-                            <td className="p-4 flex items-center gap-2">
-                              <span className={`w-2.5 h-2.5 rounded-full ${getComplianceDot(row.status)}`} />
-                              <span className="font-semibold">{row.status}</span>
-                            </td>
-                            <td className="p-4 text-zinc-500 font-medium">
-                              {row.user?.lastSubmittedAt ? new Date(row.user.lastSubmittedAt).toLocaleString() : 'Never'}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr><td colSpan="4" className="p-8 text-center text-zinc-500">No team compliance records found</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                  <div className={`h-4 w-48 animate-pulse rounded ${isDark ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
                 </div>
               </div>
-            )}
-            <ProjectList 
-              projects={projects} 
-              onAdd={openCreateProjectModal} 
-              onEdit={openEditProjectModal} 
-              onDelete={handleDeleteProject} 
-              isDark={isDark} 
+            ) : analytics?.submissionCompliance ? (
+              <SubmissionCompliance data={analytics.submissionCompliance} isDark={isDark} />
+            ) : null}
+
+            {/* Projects List */}
+            <ProjectList
+              projects={projects}
+              onAdd={openCreateProjectModal}
+              onEdit={openEditProjectModal}
+              onDelete={handleDeleteProject}
+              isDark={isDark}
             />
+
+            {/* Team Reports Feed with Filters */}
             <div className={`rounded-xl border ${isDark ? 'bg-zinc-900/20 border-zinc-800' : 'bg-white border-zinc-200'}`}>
               <div className={`px-6 py-5 border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
                 <h2 className="text-sm font-semibold flex items-center gap-2 mb-4">
                   <BookOpen size={16} className="text-indigo-500" />
                   <span>Team Reports Feed</span>
+                  {searchQuery && (
+                    <span className="ml-2 text-[10px] text-indigo-500 font-normal">
+                      Filtered by: "{searchQuery}"
+                    </span>
+                  )}
                 </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <label className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Team Member</label>
-                    <select name="user" value={filters.user} onChange={handleFilterChange} className={`w-full input-base cursor-pointer ${isDark ? 'input-field-dark' : 'input-field-light'}`}>
-                      <option value="">All Members</option>
-                      {users.map((user) => <option key={user._id} value={user._id}>{user.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Project</label>
-                    <select name="project" value={filters.project} onChange={handleFilterChange} className={`w-full input-base cursor-pointer ${isDark ? 'input-field-dark' : 'input-field-light'}`}>
-                      <option value="">All Projects</option>
-                      {projects.map((proj) => <option key={proj._id} value={proj._id}>{proj.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Start Date</label>
-                    <input type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange} className={`w-full input-base ${isDark ? 'input-field-dark' : 'input-field-light'}`} />
-                  </div>
-                  <div className="flex flex-col gap-1.5 justify-end">
-                    <button onClick={resetFilters} className="w-full btn-secondary-zinc flex items-center justify-center gap-2 py-2 text-xs font-semibold">
-                      <RotateCcw size={14} />
-                      <span>Reset Filters</span>
-                    </button>
-                  </div>
-                </div>
+                <FilterBar
+                  filters={filters}
+                  users={users}
+                  projects={projects}
+                  isDark={isDark}
+                  onFilterChange={handleFilterChange}
+                  onReset={resetFilters}
+                  timePeriod={timePeriod}
+                  onTimePeriodChange={handleTimePeriodChange}
+                />
               </div>
+
               {loading ? (
-                <div className="p-12 flex justify-center"><div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
+                <TableSkeleton isDark={isDark} rows={5} columns={8} />
               ) : (
-                <ReportTable reports={reports} role="Manager" onEdit={setSelectedReport} onReview={handleReviewReport} isDark={isDark} />
+                <ReportTable
+                  reports={filteredReports}
+                  role="Manager"
+                  onEdit={setSelectedReport}
+                  onReview={handleReviewReport}
+                  isDark={isDark}
+                />
               )}
             </div>
           </div>
         </main>
       </div>
+
       <ChatAssistant theme={theme} />
-      {selectedReport && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className={`rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border shadow-2xl ${isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-800'}`}>
-            <div className={`p-6 border-b flex justify-between items-center ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-              <h2 className="text-base font-bold">Report Details</h2>
-              <button onClick={() => setSelectedReport(null)} className="text-zinc-500 hover:text-zinc-350 cursor-pointer text-xl">&times;</button>
-            </div>
-            <div className="p-6 space-y-6 text-xs">
-              <div className="flex justify-between items-start border-b border-zinc-800/80 pb-4">
-                <div>
-                  <h3 className="text-sm font-bold text-zinc-100">{selectedReport.user?.name || 'Unknown User'}</h3>
-                  <p className="text-[10px] text-zinc-500 mt-1">{selectedReport.user?.email || 'N/A'} • {selectedReport.user?.department || 'N/A'}</p>
-                </div>
-                <div className="text-right">
-                  <span className="px-2 py-0.5 font-bold rounded-full border border-indigo-900 bg-indigo-950/40 text-indigo-400">{selectedReport.status}</span>
-                  <p className="text-[10px] text-zinc-500 mt-1.5">Hours: {selectedReport.hoursWorked || 'N/A'}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">Week Duration</h4>
-                  <p className="font-semibold text-zinc-200">{new Date(selectedReport.weekStartDate).toLocaleDateString()} &rarr; {new Date(selectedReport.weekEndDate).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">Project Category</h4>
-                  <p className="font-semibold text-zinc-200">{selectedReport.project?.name || selectedReport.project || 'General'}</p>
-                </div>
-              </div>
-              <div>
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">Tasks Completed This Week</h4>
-                <p className="whitespace-pre-wrap leading-relaxed text-zinc-300 bg-zinc-950/40 p-3 rounded-lg border border-zinc-850">{selectedReport.tasksCompleted}</p>
-              </div>
-              <div>
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">Tasks Planned for Next Week</h4>
-                <p className="whitespace-pre-wrap leading-relaxed text-zinc-300 bg-zinc-950/40 p-3 rounded-lg border border-zinc-850">{selectedReport.tasksPlanned}</p>
-              </div>
-              {selectedReport.blockers && (
-                <div>
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-amber-500/80 mb-1">Blockers / Challenges</h4>
-                  <p className="whitespace-pre-wrap leading-relaxed text-amber-400/90 bg-amber-955/10 p-3 rounded-lg border border-amber-900/30">{selectedReport.blockers}</p>
-                </div>
-              )}
-              {selectedReport.notes && (
-                <div>
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">Notes & Links</h4>
-                  <p className="whitespace-pre-wrap leading-relaxed text-zinc-400 bg-zinc-950/40 p-3 rounded-lg border border-zinc-850">{selectedReport.notes}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-      {showProjectModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className={`rounded-xl max-w-md w-full border shadow-2xl ${isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-800'}`}>
-            <div className={`p-6 border-b flex justify-between items-center ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-              <h2 className="text-xs font-bold">{editingProject ? 'Edit Project' : 'Create New Project'}</h2>
-              <button onClick={() => setShowProjectModal(false)} className="text-zinc-500 hover:text-zinc-350 cursor-pointer text-xl">&times;</button>
-            </div>
-            <form onSubmit={handleProjectSubmit} className="p-6 space-y-4">
-              <div>
-                <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-1.5 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>Project Name *</label>
-                <input type="text" name="name" value={projectForm.name} onChange={handleProjectFormChange} required className={`w-full input-base ${isDark ? 'input-field-dark' : 'input-field-light'}`} />
-              </div>
-              <div>
-                <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-1.5 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>Description</label>
-                <textarea name="description" value={projectForm.description} onChange={handleProjectFormChange} rows={3} className={`w-full input-base ${isDark ? 'input-field-dark' : 'input-field-light'}`} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-1.5 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>Category *</label>
-                  <select name="category" value={projectForm.category} onChange={handleProjectFormChange} required className={`w-full input-base cursor-pointer ${isDark ? 'input-field-dark' : 'input-field-light'}`}>
-                    <option value="Client Work">Client Work</option>
-                    <option value="Internal Tooling">Internal Tooling</option>
-                    <option value="R&D">R&D</option>
-                    <option value="Marketing">Marketing</option>
-                    <option value="Operations">Operations</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-1.5 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>Status *</label>
-                  <select name="status" value={projectForm.status} onChange={handleProjectFormChange} required className={`w-full input-base cursor-pointer ${isDark ? 'input-field-dark' : 'input-field-light'}`}>
-                    <option value="Active">Active</option>
-                    <option value="On Hold">On Hold</option>
-                    <option value="Completed">Completed</option>
-                    <option value="Archived">Archived</option>
-                  </select>
-                </div>
-              </div>
-              <div className={`flex justify-end gap-3 pt-4 border-t ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-                <button type="button" onClick={() => setShowProjectModal(false)} className={isDark ? 'btn-secondary-zinc' : 'btn-secondary-light'}>Cancel</button>
-                <button type="submit" className="btn-primary-glow">{editingProject ? 'Update Project' : 'Create Project'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+
+      {/* Report Detail Modal */}
+      <ReportDetailModal
+        report={selectedReport}
+        onClose={() => setSelectedReport(null)}
+        isDark={isDark}
+      />
+
+      {/* Project Form Modal */}
+      <ProjectFormModal
+        isOpen={showProjectModal}
+        onClose={() => setShowProjectModal(false)}
+        onSubmit={handleProjectSubmit}
+        editingProject={editingProject}
+        isDark={isDark}
+      />
     </div>
   );
 };
+
 export default ManagerDashboard;

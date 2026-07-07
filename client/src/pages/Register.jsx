@@ -24,7 +24,8 @@ const AnimatedSignUp = () => {
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    document.documentElement.className = theme;
+  }, [theme]);
 
   const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
 
@@ -274,7 +275,7 @@ const AnimatedSignUp = () => {
                 <h1 className="text-2xl font-bold mb-1 flex items-center gap-2">
                   Join{' '}
                   <span className="text-indigo-500 flex items-center gap-1">
-                    Jobsly
+                    Weekly Reports
                     <motion.span
                       animate={{ rotate: [0, 360] }}
                       transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
@@ -464,7 +465,7 @@ const AnimatedSignUp = () => {
                 <p className={`text-xs font-medium uppercase tracking-wider ${
                   theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
                 }`}>
-                  What you get with Jobsly
+                  What you get with Weekly Reports
                 </p>
                 {[
                   { icon: FileText, text: 'Structured weekly report templates' },
