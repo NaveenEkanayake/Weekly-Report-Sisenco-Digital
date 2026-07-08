@@ -1,5 +1,122 @@
 import React, { useState } from 'react';
-import { Edit, Trash2, Calendar, Folder, Clock, CheckCircle, ChevronUp, ChevronDown, Eye } from 'lucide-react';
+import { Edit, Trash2, Calendar, Folder, CheckCircle, ChevronUp, ChevronDown, Eye, ChevronRight } from 'lucide-react';
+
+const MobileReportCard = ({ report, role, onEdit, onDelete, onReview, isDark }) => {
+  const getStatusStyle = (status) => {
+    const styles = {
+      Draft: isDark 
+        ? 'bg-zinc-800/80 text-zinc-400 border border-zinc-700/60' 
+        : 'bg-zinc-100 text-zinc-600 border border-zinc-200',
+      Submitted: isDark 
+        ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/60' 
+        : 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+      Reviewed: isDark 
+        ? 'bg-indigo-950/40 text-indigo-400 border border-indigo-900/60' 
+        : 'bg-indigo-50 text-indigo-700 border border-indigo-200',
+    };
+    return styles[status] || styles.Draft;
+  };
+
+  return (
+    <div className={`p-4 rounded-xl border ${
+      isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-white border-zinc-200'
+    }`}>
+      {/* Top row - Member + Status */}
+      <div className="flex justify-between items-start mb-3">
+        {role === 'Manager' && (
+          <div>
+            <p className="text-sm font-semibold">{report.user?.name || 'Unknown'}</p>
+            <p className={`text-[10px] ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>{report.user?.department || 'N/A'}</p>
+          </div>
+        )}
+        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${getStatusStyle(report.status)}`}>
+          {report.status}
+        </span>
+      </div>
+
+      {/* Week + Project */}
+      <div className="flex flex-wrap gap-3 mb-3">
+        <div className="flex items-center gap-1.5">
+          <Calendar size={12} className={isDark ? 'text-zinc-500' : 'text-zinc-400'} />
+          <span className={`text-xs ${isDark ? 'text-zinc-300' : 'text-zinc-600'}`}>
+            {new Date(report.weekStartDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            {' — '}
+            {new Date(report.weekEndDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Folder size={12} className={isDark ? 'text-zinc-500' : 'text-zinc-400'} />
+          <span className={`text-xs ${isDark ? 'text-indigo-300' : 'text-indigo-600'}`}>
+            {report.project?.name || report.project || 'General'}
+          </span>
+        </div>
+      </div>
+
+      {/* Tasks preview */}
+      <div className="space-y-1.5 mb-3">
+        <div>
+          <p className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Completed</p>
+          <p className={`text-xs line-clamp-1 ${isDark ? 'text-zinc-300' : 'text-zinc-600'}`}>{report.tasksCompleted}</p>
+        </div>
+        <div>
+          <p className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Hours</p>
+          <p className={`text-xs font-semibold ${isDark ? 'text-zinc-300' : 'text-zinc-600'}`}>
+            {report.hoursWorked !== undefined && report.hoursWorked !== null ? `${report.hoursWorked} hrs` : '-'}
+          </p>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className={`flex justify-end gap-2 pt-2 border-t ${isDark ? 'border-zinc-800/50' : 'border-zinc-200'}`}>
+        {role === 'Manager' ? (
+          <>
+            {report.status === 'Submitted' && onReview && (
+              <button
+                onClick={() => onReview(report._id)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-emerald-950/40 text-emerald-400 border border-emerald-900/60 hover:bg-emerald-950/60 cursor-pointer transition-all"
+              >
+                <CheckCircle size={12} />
+                Review
+              </button>
+            )}
+            <button
+              onClick={() => onEdit(report)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-indigo-950/40 text-indigo-400 border border-indigo-900/60 hover:bg-indigo-950/60 cursor-pointer transition-all"
+            >
+              <Eye size={12} />
+              Details
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => onEdit(report)}
+              disabled={report.status === 'Reviewed'}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-semibold cursor-pointer transition-all ${
+                isDark
+                  ? 'bg-zinc-800 text-zinc-300 border border-zinc-700 hover:bg-zinc-700'
+                  : 'bg-zinc-100 text-zinc-600 border border-zinc-200 hover:bg-zinc-200'
+              } ${report.status === 'Reviewed' ? 'opacity-30 cursor-not-allowed' : ''}`}
+            >
+              <Edit size={12} />
+              Edit
+            </button>
+            <button
+              onClick={() => onDelete(report._id)}
+              disabled={report.status === 'Reviewed'}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-semibold cursor-pointer transition-all ${
+                report.status === 'Reviewed' ? 'opacity-30 cursor-not-allowed' : ''
+              } bg-red-950/30 text-red-400 border border-red-900/50 hover:bg-red-950/50`}
+            >
+              <Trash2 size={12} />
+              Delete
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const ReportTable = ({ 
   reports, 
@@ -61,7 +178,9 @@ const ReportTable = ({
   };
 
   return (
-    <div className="overflow-x-auto w-full">
+    <>
+      {/* Desktop Table — hidden on small screens */}
+      <div className="hidden sm:block overflow-x-auto w-full">
       <table className="w-full text-left border-collapse text-xs">
         <thead>
           <tr className={`border-b font-semibold ${isDark ? 'border-zinc-800 text-zinc-400 bg-zinc-900/20' : 'border-zinc-200 text-zinc-500 bg-zinc-50'}`}>
@@ -187,7 +306,29 @@ const ReportTable = ({
           )}
         </tbody>
       </table>
-    </div>
+      </div>
+
+      {/* Mobile Card Layout — shown on small screens */}
+      <div className="sm:hidden space-y-3 p-4">
+        {sortedReports.length === 0 ? (
+          <p className="text-center text-zinc-500 text-xs font-medium py-8">
+            No reports found matching criteria.
+          </p>
+        ) : (
+          sortedReports.map((report) => (
+            <MobileReportCard
+              key={report._id}
+              report={report}
+              role={role}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onReview={onReview}
+              isDark={isDark}
+            />
+          ))
+        )}
+      </div>
+    </>
   );
 };
 

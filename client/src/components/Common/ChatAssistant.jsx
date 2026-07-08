@@ -86,7 +86,7 @@ const ChatAssistant = ({ theme = 'dark' }) => {
 
       {/* Expanded Widget */}
       {isOpen && (
-        <div className={`w-[360px] sm:w-[380px] h-[500px] rounded-2xl border shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ${
+        <div className={`w-[calc(100vw-2rem)] sm:w-[360px] md:w-[380px] max-w-[420px] h-[460px] sm:h-[520px] rounded-2xl border shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ${
           isDark 
             ? 'bg-zinc-900 border-zinc-800 text-zinc-100 shadow-indigo-950/20' 
             : 'bg-white border-zinc-200 text-zinc-800 shadow-zinc-350/30'

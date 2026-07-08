@@ -6,6 +6,8 @@ import {
   createProject,
   updateProject,
   deleteProject,
+  assignMember,
+  removeMember,
 } from '../controllers/projectController.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
 
@@ -26,6 +28,10 @@ const projectValidation = [
 
 // All routes require authentication
 router.use(protect);
+
+// Member assignment routes (Manager only)
+router.post('/:id/assign/:userId', authorize('Manager'), assignMember);
+router.delete('/:id/assign/:userId', authorize('Manager'), removeMember);
 
 router.route('/')
   .get(getProjects)

@@ -15,6 +15,8 @@ const ReportFormModal = ({
     tasksCompleted: '',
     tasksPlanned: '',
     blockers: '',
+    hasBlocker: false,
+    blockerDetails: '',
     hoursWorked: '',
     notes: '',
   });
@@ -28,6 +30,8 @@ const ReportFormModal = ({
         tasksCompleted: editingReport.tasksCompleted || '',
         tasksPlanned: editingReport.tasksPlanned || '',
         blockers: editingReport.blockers || '',
+        hasBlocker: editingReport.hasBlocker || !!editingReport.blockerDetails || !!editingReport.blockers,
+        blockerDetails: editingReport.blockerDetails || editingReport.blockers || '',
         hoursWorked: editingReport.hoursWorked || '',
         notes: editingReport.notes || '',
       });
@@ -39,6 +43,8 @@ const ReportFormModal = ({
         tasksCompleted: '',
         tasksPlanned: '',
         blockers: '',
+        hasBlocker: false,
+        blockerDetails: '',
         hoursWorked: '',
         notes: '',
       });
@@ -46,9 +52,10 @@ const ReportFormModal = ({
   }, [editingReport, isOpen]);
 
   const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value,
+      [name]: type === 'checkbox' ? checked : value,
     });
   };
 
@@ -162,19 +169,56 @@ const ReportFormModal = ({
             />
           </div>
 
-          {/* Blockers */}
-          <div>
-            <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-1.5 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-              Blockers / Challenges
+          {/* Blockers - Checkbox + Conditional Textarea */}
+          <div className={`rounded-lg border p-4 ${
+            isDark ? 'border-zinc-800 bg-zinc-950/30' : 'border-zinc-200 bg-zinc-50/50'
+          }`}>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div className={`relative w-10 h-5 rounded-full transition-colors ${
+                formData.hasBlocker 
+                  ? 'bg-red-600' 
+                  : isDark ? 'bg-zinc-700' : 'bg-zinc-300'
+              }`}>
+                <input
+                  type="checkbox"
+                  name="hasBlocker"
+                  checked={formData.hasBlocker}
+                  onChange={handleChange}
+                  className="sr-only"
+                />
+                <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                  formData.hasBlocker ? 'translate-x-5' : 'translate-x-0'
+                }`} />
+              </div>
+              <div>
+                <span className={`text-xs font-semibold ${formData.hasBlocker ? 'text-red-500' : isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  Do you have a blocker?
+                </span>
+                <p className={`text-[9px] ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                  Toggle on to describe any issues blocking your progress
+                </p>
+              </div>
             </label>
-            <textarea
-              name="blockers"
-              value={formData.blockers}
-              onChange={handleChange}
-              rows={2}
-              className={`w-full input-base ${isDark ? 'input-field-dark' : 'input-field-light'}`}
-              placeholder="List any blockers or speed bumps you are facing (if any)..."
-            />
+
+            {/* Conditional Blocker Details */}
+            {formData.hasBlocker && (
+              <div className="mt-3 animate-fadeIn">
+                <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-1.5 ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+                  Describe your blocker *
+                </label>
+                <textarea
+                  name="blockerDetails"
+                  value={formData.blockerDetails}
+                  onChange={handleChange}
+                  required={formData.hasBlocker}
+                  rows={2}
+                  className={`w-full input-base border-red-500/40 focus:border-red-500 ${
+                    isDark ? 'bg-zinc-950 text-zinc-100' : 'bg-white text-zinc-800'
+                  }`}
+                  placeholder="Please describe the blocker you are facing..."
+                />
+              </div>
+            )}
           </div>
 
           {/* Hours Worked */}

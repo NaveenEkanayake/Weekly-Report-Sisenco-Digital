@@ -78,42 +78,49 @@ const ManagerDashboard = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState('success');
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [analyticsKey, setAnalyticsKey] = useState(0);
 
   const isDark = theme === 'dark';
   const pollingRef = useRef(null);
+  const timePeriodRef = useRef(timePeriod);
+  const filtersRef = useRef(filters);
 
-  // Real-time auto-polling: refresh data every 15 seconds
+  // Keep refs in sync with state to avoid stale closures in polling
+  useEffect(() => { timePeriodRef.current = timePeriod; }, [timePeriod]);
+  useEffect(() => { filtersRef.current = filters; }, [filters]);
+
+  // Real-time auto-polling: refresh data every 10 seconds
   // and also refresh when tab regains focus
   useEffect(() => {
     const startPolling = () => {
-      // Initial fetch already happened on mount
       pollingRef.current = setInterval(async () => {
         try {
-          const dateRange = getDateRange(timePeriod);
+          const currentPeriod = timePeriodRef.current;
+          const currentFilters = filtersRef.current;
+          const dateRange = getDateRange(currentPeriod);
           const analyticsFilters = dateRange.startDate
             ? { startDate: dateRange.startDate, endDate: dateRange.endDate }
             : {};
 
           const [analyticsRes, reportsRes, projectsRes, usersRes] = await Promise.all([
             reportService.getDashboardAnalytics(analyticsFilters),
-            reportService.getReports({ ...filters, ...analyticsFilters }),
+            reportService.getReports({ ...currentFilters, ...analyticsFilters }),
             reportService.getProjects(),
             authService.getAllUsers(),
           ]);
 
           setAnalytics(analyticsRes.data);
+          setAnalyticsKey(prev => prev + 1);
           setReports(reportsRes.data || []);
           setProjects(projectsRes.data || []);
           setUsers(usersRes.data || []);
           setLastUpdated(new Date());
         } catch (err) {
-          // Silent fail on polling to avoid spamming errors
-          console.debug('Auto-refresh polling failed (expected if server is busy):', err.message);
+          console.debug('Auto-refresh polling failed:', err.message);
         }
-      }, 10000); // Refresh every 10 seconds
+      }, 10000);
     };
 
-    // Re-fetch when tab becomes visible again
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchDashboardData(true);
@@ -150,6 +157,7 @@ const ManagerDashboard = () => {
       ]);
 
       setAnalytics(analyticsRes.data);
+      setAnalyticsKey(prev => prev + 1);
       setReports(reportsRes.data || []);
       setProjects(projectsRes.data || []);
       setUsers(usersRes.data || []);
@@ -207,6 +215,7 @@ const ManagerDashboard = () => {
       ]);
       setReports(reportsRes.data || []);
       setAnalytics(analyticsRes.data);
+      setAnalyticsKey(prev => prev + 1);
     } catch (err) {
       console.error('Error filtering reports:', err);
     }
@@ -225,6 +234,7 @@ const ManagerDashboard = () => {
       ]);
       setReports(reportsRes.data || []);
       setAnalytics(analyticsRes.data);
+      setAnalyticsKey(prev => prev + 1);
     } catch (err) {
       console.error('Error resetting filters:', err);
     }
@@ -301,13 +311,13 @@ const ManagerDashboard = () => {
       <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
       <div className="flex flex-1">
         <Sidebar theme={theme} />
-        <main className="flex-1 p-6 md:p-8 pb-24 md:pb-8">
-          <div className="max-w-7xl mx-auto space-y-8">
+        <main className="flex-1 p-4 sm:p-6 md:p-8 pb-28 md:pb-8">
+          <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <div className="flex items-center gap-3 mb-1">
-                  <h1 className="text-2xl font-bold tracking-tight">Manager Dashboard</h1>
+              <div className="w-full md:w-auto">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-1">
+                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Dashboard</h1>
                   {/* Live indicator */}
                   <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/40 text-emerald-400 border border-emerald-900/50">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
@@ -315,7 +325,7 @@ const ManagerDashboard = () => {
                   </div>
                   {lastUpdated && (
                     <span className={`text-[10px] ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                      Updated {lastUpdated.toLocaleTimeString()}
+                      {lastUpdated.toLocaleTimeString()}
                     </span>
                   )}
                 </div>
@@ -327,14 +337,14 @@ const ManagerDashboard = () => {
               <button
                 onClick={() => fetchDashboardData(true)}
                 disabled={refreshing}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border flex-shrink-0 ${
                   isDark
                     ? 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
                     : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
                 } ${refreshing ? 'opacity-50' : ''}`}
               >
                 <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-                <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+                <span className="hidden sm:inline">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
               </button>
             </div>
 
@@ -346,6 +356,7 @@ const ManagerDashboard = () => {
                 totalReports={analytics.summary.totalReports || 0}
                 submittedCount={analytics.summary.submittedCount || 0}
                 draftsCount={analytics.summary.draftCount || 0}
+                lateCount={analytics.summary.lateCount || 0}
                 openBlockersCount={analytics.summary.activeBlockers || 0}
                 complianceRate={analytics.summary.complianceRate || 0}
                 isDark={isDark}
@@ -361,7 +372,7 @@ const ManagerDashboard = () => {
                 <ChartSkeleton isDark={isDark} />
               </div>
             ) : analytics ? (
-              <AnalyticsCharts data={analytics} theme={theme} />
+              <AnalyticsCharts key={analyticsKey} data={analytics} theme={theme} />
             ) : null}
 
             {/* Submission Compliance */}
@@ -440,6 +451,7 @@ const ManagerDashboard = () => {
         onSubmit={handleProjectSubmit}
         editingProject={editingProject}
         isDark={isDark}
+        allUsers={users}
       />
     </div>
   );

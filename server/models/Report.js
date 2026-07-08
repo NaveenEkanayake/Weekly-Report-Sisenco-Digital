@@ -37,10 +37,19 @@ const reportSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    hasBlocker: {
+      type: Boolean,
+      default: false,
+    },
+    blockerDetails: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     hoursWorked: {
       type: Number,
       min: 0,
-      max: 168, // Maximum hours in a week
+      max: 168,
     },
     notes: {
       type: String,
@@ -49,7 +58,7 @@ const reportSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Draft', 'Submitted', 'Reviewed'],
+      enum: ['Draft', 'Submitted', 'Reviewed', 'Late'],
       default: 'Draft',
     },
     submittedAt: {

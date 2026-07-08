@@ -74,6 +74,41 @@ const reportService = {
     const response = await api.delete(`/projects/${id}`);
     return response.data;
   },
+
+  // ── Notifications ──
+  getNotifications: async (unreadOnly = false) => {
+    const params = unreadOnly ? '?unreadOnly=true' : '';
+    const response = await api.get(`/notifications${params}`);
+    return response.data;
+  },
+
+  markNotificationRead: async (id) => {
+    const response = await api.put(`/notifications/${id}/read`);
+    return response.data;
+  },
+
+  markAllNotificationsRead: async () => {
+    const response = await api.put('/notifications/read-all');
+    return response.data;
+  },
+
+  // Assign member to project (Manager only)
+  assignMember: async (projectId, userId) => {
+    const response = await api.post(`/projects/${projectId}/assign/${userId}`);
+    return response.data;
+  },
+
+  // Remove member from project (Manager only)
+  removeMember: async (projectId, userId) => {
+    const response = await api.delete(`/projects/${projectId}/assign/${userId}`);
+    return response.data;
+  },
+
+  // Get only projects assigned to the current team member
+  getMyProjects: async () => {
+    const response = await api.get('/projects');
+    return response.data;
+  },
 };
 
 export default reportService;

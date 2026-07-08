@@ -30,6 +30,14 @@ const MemberDashboard = () => {
   useEffect(() => {
     fetchReports();
     fetchProjects();
+
+    // Poll database every 10 seconds for real-time updates
+    const interval = setInterval(() => {
+      fetchReports();
+      fetchProjects();
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -53,7 +61,8 @@ const MemberDashboard = () => {
 
   const fetchProjects = async () => {
     try {
-      const response = await reportService.getProjects();
+      // Team Members only see assigned projects (backend filters this)
+      const response = await reportService.getMyProjects();
       setProjects(response.data || []);
     } catch (err) {
       console.error('Error fetching projects:', err);
@@ -174,6 +183,57 @@ const MemberDashboard = () => {
                 isDark={isDark} 
               />
             )}
+
+            {/* Project Assignments */}
+            <div className={`rounded-xl border p-6 space-y-4 ${
+              isDark ? 'bg-zinc-900/20 border-zinc-800' : 'bg-white border-zinc-200'
+            }`}>
+              <h2 className="text-sm font-semibold flex items-center gap-2">
+                <span className="text-indigo-500">📋</span>
+                <span>My Project Assignments / Instructions</span>
+              </h2>
+              {projects.length === 0 ? (
+                <p className={`text-xs text-center py-6 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                  No projects currently assigned to you by the manager.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {projects.map((proj) => (
+                    <div 
+                      key={proj._id}
+                      className={`p-4 rounded-xl border transition-all ${
+                        isDark 
+                          ? 'bg-zinc-950/60 border-zinc-800/80 hover:bg-zinc-900/40' 
+                          : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100/50'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <h3 className="text-xs font-bold text-zinc-100">{proj.name}</h3>
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                          proj.status === 'Active'
+                            ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-900'
+                            : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                        }`}>
+                          {proj.status}
+                        </span>
+                      </div>
+                      <p className={`text-[11px] mt-1.5 leading-relaxed line-clamp-2 ${isDark ? 'text-zinc-400' : 'text-zinc-655'}`}>
+                        {proj.description || 'No instructions provided.'}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-zinc-800/50 text-[9px] font-semibold text-zinc-500 uppercase tracking-wider">
+                        <span>Category: {proj.category}</span>
+                        {proj.startDate && (
+                          <span>· Start: {new Date(proj.startDate).toLocaleDateString()}</span>
+                        )}
+                        {proj.endDate && (
+                          <span>· End: {new Date(proj.endDate).toLocaleDateString()}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Reports List */}
             <div className={`rounded-xl border ${

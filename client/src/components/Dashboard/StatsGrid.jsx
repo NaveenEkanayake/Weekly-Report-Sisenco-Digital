@@ -1,10 +1,11 @@
 import React from 'react';
-import { FileText, FileCheck, Clock, AlertTriangle, Activity } from 'lucide-react';
+import { FileText, FileCheck, Clock, AlertTriangle, Activity, Ban } from 'lucide-react';
 
 const StatsGrid = ({ 
   totalReports, 
   submittedCount, 
   draftsCount, 
+  lateCount = null, 
   openBlockersCount = null, 
   complianceRate = null, 
   isDark 
@@ -32,6 +33,16 @@ const StatsGrid = ({
       bg: 'bg-amber-500/10' 
     }
   ];
+
+  if (lateCount !== null) {
+    cards.push({
+      label: 'Late Reports',
+      count: lateCount,
+      icon: Ban,
+      color: 'text-orange-500',
+      bg: 'bg-orange-500/10'
+    });
+  }
 
   if (openBlockersCount !== null) {
     cards.push({

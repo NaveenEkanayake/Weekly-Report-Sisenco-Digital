@@ -22,6 +22,16 @@ const projectSchema = new mongoose.Schema(
       enum: ['Active', 'On Hold', 'Completed', 'Archived'],
       default: 'Active',
     },
+    startDate: {
+      type: Date,
+    },
+    endDate: {
+      type: Date,
+    },
+    assignedMembers: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    }],
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
