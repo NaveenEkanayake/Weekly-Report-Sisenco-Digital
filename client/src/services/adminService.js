@@ -40,6 +40,16 @@ const adminService = {
     const response = await api.get(`/admin/metrics-charts?${params.toString()}`);
     return response.data;
   },
+
+  // GET /api/admin/late-submissions — audit log of late submissions
+  getLateSubmissions: async (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, val]) => {
+      if (val) params.append(key, val);
+    });
+    const response = await api.get(`/admin/late-submissions?${params.toString()}`);
+    return response.data;
+  },
 };
 
 export default adminService;

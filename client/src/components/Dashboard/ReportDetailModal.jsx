@@ -1,4 +1,6 @@
 import React from 'react';
+import { AlertTriangle } from 'lucide-react';
+import { getReportStatusStyle } from '../../utils/statusStyles';
 
 const ReportDetailModal = ({ report, onClose, isDark }) => {
   if (!report) return null;
@@ -32,22 +34,32 @@ const ReportDetailModal = ({ report, onClose, isDark }) => {
               </p>
             </div>
             <div className="text-right">
-              <span className={`px-2 py-0.5 font-bold rounded-full border ${
-                report.status === 'Submitted'
-                  ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/60'
-                  : report.status === 'Reviewed'
-                  ? 'bg-indigo-950/40 text-indigo-400 border-indigo-900/60'
-                  : isDark
-                  ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                  : 'bg-zinc-100 text-zinc-600 border-zinc-200'
-              }`}>
-                {report.status}
-              </span>
+              <div className="flex items-center gap-2 justify-end">
+                <span className={`px-2 py-0.5 font-bold rounded-full border ${getReportStatusStyle(report.status, isDark)}`}>
+                  {report.status}
+                </span>
+                {report.status === 'Late' && (
+                  <AlertTriangle size={14} className="text-amber-400" title="Submitted after project deadline" />
+                )}
+              </div>
               <p className={`text-[10px] mt-1.5 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
                 Hours: {report.hoursWorked || 'N/A'}
               </p>
             </div>
           </div>
+
+          {/* Late Warning Banner */}
+          {report.status === 'Late' && (
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-semibold ${
+              isDark ? 'bg-amber-950/30 text-amber-400 border border-amber-900/40' : 'bg-amber-50 text-amber-700 border border-amber-200'
+            }`}>
+              <AlertTriangle size={16} className="shrink-0" />
+              <div>
+                <p className="font-bold">Late Submission</p>
+                <p className="text-[10px] font-normal opacity-80 mt-0.5">This report was submitted after the project deadline.</p>
+              </div>
+            </div>
+          )}
 
           {/* Week & Project Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

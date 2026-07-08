@@ -3,6 +3,10 @@ import Report from '../models/Report.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import Project from '../models/Project.js';
+import { sendLateThresholdAlert } from '../utils/email.js';
+
+// Default late submission threshold (configurable via env)
+const LATE_THRESHOLD = parseInt(process.env.LATE_SUBMISSION_THRESHOLD || '3');
 
 // Helper: compute Monday-Sunday week boundaries
 const getWeekRange = (date) => {
@@ -164,6 +168,20 @@ export const createReport = async (req, res) => {
       });
     }
 
+    // Determine if the report is late by comparing with project end date
+    let finalStatus = status || 'Draft';
+    if (finalStatus === 'Submitted') {
+      const projectDoc = await Project.findById(project).select('endDate');
+      if (projectDoc && projectDoc.endDate) {
+        const projectEndDate = new Date(projectDoc.endDate);
+        projectEndDate.setHours(23, 59, 59, 999);
+        const reportWeekEnd = new Date(weekEndDate);
+        if (reportWeekEnd > projectEndDate) {
+          finalStatus = 'Late';
+        }
+      }
+    }
+
     const report = await Report.create({
       user: req.user._id,
       weekStartDate,
@@ -176,19 +194,22 @@ export const createReport = async (req, res) => {
       blockerDetails: hasBlocker ? blockerDetails : '',
       hoursWorked,
       notes,
-      status: status || 'Draft',
-      submittedAt: status === 'Submitted' ? new Date() : null,
+      status: finalStatus,
+      submittedAt: finalStatus === 'Submitted' || finalStatus === 'Late' ? new Date() : null,
     });
 
     // Notify managers on submission
     if (status === 'Submitted') {
       const managers = await User.find({ role: 'Manager' });
       if (managers.length > 0) {
+        const isLate = finalStatus === 'Late';
         const notifications = managers.map(mgr => ({
           user: mgr._id,
-          type: 'report_submitted',
-          title: 'New Report Submitted',
-          message: `${req.user.name} submitted a weekly report for week starting ${new Date(weekStartDate).toLocaleDateString()}.`,
+          type: isLate ? 'report_late' : 'report_submitted',
+          title: isLate ? '⚠️ Late Report Submitted' : 'New Report Submitted',
+          message: isLate
+            ? `${req.user.name} submitted a weekly report for week starting ${new Date(weekStartDate).toLocaleDateString()} AFTER the project deadline.`
+            : `${req.user.name} submitted a weekly report for week starting ${new Date(weekStartDate).toLocaleDateString()}.`,
           relatedReport: report._id
         }));
         await Notification.insertMany(notifications).catch(err => console.error('Notification error:', err));
@@ -198,6 +219,30 @@ export const createReport = async (req, res) => {
     const populatedReport = await Report.findById(report._id)
       .populate('user', 'name email')
       .populate('project', 'name category');
+
+    // Check late submission threshold and alert managers if exceeded
+    if (finalStatus === 'Late') {
+      try {
+        const now = new Date();
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const lateCount = await Report.countDocuments({
+          status: 'Late',
+          submittedAt: { $gte: thirtyDaysAgo, $lte: now },
+        });
+
+        if (lateCount >= LATE_THRESHOLD) {
+          const managers = await User.find({ role: 'Manager' }).select('name email');
+          const totalMembers = await User.countDocuments({ role: 'Team Member', isActive: true });
+          sendLateThresholdAlert(managers, lateCount, LATE_THRESHOLD, totalMembers).catch(err =>
+            console.error('Threshold alert error:', err)
+          );
+        }
+      } catch (err) {
+        console.error('Threshold check error:', err);
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -247,18 +292,39 @@ export const updateReport = async (req, res) => {
     }
 
     const oldStatus = report.status;
-    const newStatus = req.body.status;
+    let newStatus = req.body.status;
 
+    // If transitioning to Submitted, check project deadline for late detection
     if (newStatus === 'Submitted' && oldStatus !== 'Submitted') {
+      const projectDoc = await Project.findById(report.project).select('endDate');
+      if (projectDoc && projectDoc.endDate) {
+        const projectEndDate = new Date(projectDoc.endDate);
+        projectEndDate.setHours(23, 59, 59, 999);
+        const reportWeekEnd = new Date(report.weekEndDate);
+        if (reportWeekEnd > projectEndDate) {
+          newStatus = 'Late';
+          updateData.status = newStatus;
+        }
+      }
+    }
+
+    // Set submittedAt for both Submitted and Late transitions (audit trail)
+    if ((newStatus === 'Submitted' || newStatus === 'Late') && oldStatus !== 'Submitted' && oldStatus !== 'Late') {
       updateData.submittedAt = new Date();
+      if (newStatus === 'Late') {
+        updateData.status = newStatus;
+      }
       // Notify managers
       const managers = await User.find({ role: 'Manager' });
       if (managers.length > 0) {
+        const isLate = newStatus === 'Late';
         const notifications = managers.map(mgr => ({
           user: mgr._id,
-          type: 'report_submitted',
-          title: 'New Report Submitted',
-          message: `${req.user.name} submitted a weekly report for week starting ${new Date(report.weekStartDate).toLocaleDateString()}.`,
+          type: isLate ? 'report_late' : 'report_submitted',
+          title: isLate ? '⚠️ Late Report Submitted' : 'New Report Submitted',
+          message: isLate
+            ? `${req.user.name} submitted a weekly report for week starting ${new Date(report.weekStartDate).toLocaleDateString()} AFTER the project deadline.`
+            : `${req.user.name} submitted a weekly report for week starting ${new Date(report.weekStartDate).toLocaleDateString()}.`,
           relatedReport: report._id
         }));
         await Notification.insertMany(notifications).catch(err => console.error('Notification error:', err));
@@ -422,14 +488,14 @@ export const getMetricsCharts = async (req, res) => {
       if (report.status === 'Late') {
         isLate = true;
       } else if (report.status === 'Submitted' || report.status === 'Reviewed') {
-        // Late if submitted after the week's end
-        if (submitTime && report.weekEndDate && submitTime > report.weekEndDate) {
-          isLate = true;
-        } else if (submitTime && report.project?.endDate && submitTime > report.project.endDate) {
-          // Submitted after the project's deadline (midnight UTC)
-          isLate = true;
-        } else if (report.weekEndDate && report.project?.endDate && report.weekEndDate > report.project.endDate) {
-          // Report's week extends beyond the project's end date
+        const projectDeadline = report.project?.endDate ? new Date(report.project.endDate) : null;
+        if (projectDeadline) {
+          // Manager's project deadline is the authoritative deadline
+          if (submitTime && submitTime > projectDeadline) {
+            isLate = true;
+          }
+        } else if (submitTime && report.weekEndDate && submitTime > report.weekEndDate) {
+          // No project deadline — fall back to week end date
           isLate = true;
         }
       }
@@ -445,10 +511,12 @@ export const getMetricsCharts = async (req, res) => {
     for (const memberId of assignedMemberIds) {
       if (accountedMembers.has(memberId)) continue;
 
+      // Get latest project deadline for this member
       const memberDeadlines = projectDeadlines.filter(pd => pd.memberId === memberId);
-      const anyDeadlinePassed = memberDeadlines.some(pd => pd.deadline < now);
-
-      if (anyDeadlinePassed) {
+      const latestDeadline = memberDeadlines.reduce((latest, pd) =>
+        !latest || pd.deadline > latest ? pd.deadline : latest, null
+      );
+      if (latestDeadline && latestDeadline < now) {
         lateCount++;
       }
     }
@@ -524,6 +592,102 @@ export const getMetricsCharts = async (req, res) => {
           submissionStatus,
           workloadDistribution,
           tasksCompletedTrend,
+        },
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get late submissions audit log
+// @route   GET /api/admin/late-submissions
+// @access  Private/Manager
+export const getLateSubmissions = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const now = new Date();
+
+    // Default: last 30 days if no dates provided
+    const start = startDate
+      ? new Date(startDate)
+      : (() => {
+          const d = new Date();
+          d.setDate(d.getDate() - 30);
+          d.setHours(0, 0, 0, 0);
+          return d;
+        })();
+    const end = endDate ? new Date(endDate + 'T23:59:59.999Z') : new Date();
+
+    // Find all reports with status 'Late' in the date range
+    const lateReports = await Report.find({
+      status: 'Late',
+      submittedAt: { $gte: start, $lte: end },
+    })
+      .populate('user', 'name email department')
+      .populate('project', 'name endDate')
+      .sort({ submittedAt: -1 });
+
+    // Also find reports that were submitted on time but after project deadline
+    // (status is 'Submitted' or 'Reviewed' but submittedAt > project.endDate)
+    const allSubmittedReports = await Report.find({
+      status: { $in: ['Submitted', 'Reviewed'] },
+      submittedAt: { $gte: start, $lte: end },
+    })
+      .populate('user', 'name email department')
+      .populate('project', 'name endDate');
+
+    const additionalLate = [];
+    for (const report of allSubmittedReports) {
+      if (report.project?.endDate && report.submittedAt) {
+        const projectEndDate = new Date(report.project.endDate);
+        projectEndDate.setHours(23, 59, 59, 999);
+        if (report.submittedAt > projectEndDate) {
+          // Check if not already in lateReports
+          const isDuplicate = lateReports.some(lr => lr._id.toString() === report._id.toString());
+          if (!isDuplicate) {
+            additionalLate.push({
+              ...report.toObject(),
+              wasAutoDetected: false,
+              submittedAfterDeadline: true,
+            });
+          }
+        }
+      }
+    }
+
+    // Combine and sort by submittedAt
+    const allLate = [
+      ...lateReports.map(r => ({
+        ...r.toObject(),
+        wasAutoDetected: true,
+        submittedAfterDeadline: true,
+      })),
+      ...additionalLate,
+    ].sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+
+    // Compute summary stats
+    const totalLate = allLate.length;
+    const uniqueMembers = new Set(allLate.map(r => r.user?._id?.toString())).size;
+    const lateByProject = {};
+    for (const report of allLate) {
+      const projectName = report.project?.name || 'Unknown';
+      lateByProject[projectName] = (lateByProject[projectName] || 0) + 1;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        lateSubmissions: allLate,
+        summary: {
+          totalLate,
+          uniqueMembers,
+          lateByProject: Object.entries(lateByProject).map(([name, count]) => ({ name, count })),
         },
       },
     });

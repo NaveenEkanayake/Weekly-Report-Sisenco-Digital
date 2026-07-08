@@ -1,22 +1,8 @@
 import React, { useState } from 'react';
-import { Edit, Trash2, Calendar, Folder, CheckCircle, ChevronUp, ChevronDown, Eye, ChevronRight } from 'lucide-react';
+import { Edit, Trash2, Calendar, Folder, CheckCircle, ChevronUp, ChevronDown, Eye, ChevronRight, AlertTriangle } from 'lucide-react';
+import { getReportStatusStyle } from '../../utils/statusStyles';
 
 const MobileReportCard = ({ report, role, onEdit, onDelete, onReview, isDark }) => {
-  const getStatusStyle = (status) => {
-    const styles = {
-      Draft: isDark 
-        ? 'bg-zinc-800/80 text-zinc-400 border border-zinc-700/60' 
-        : 'bg-zinc-100 text-zinc-600 border border-zinc-200',
-      Submitted: isDark 
-        ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/60' 
-        : 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-      Reviewed: isDark 
-        ? 'bg-indigo-950/40 text-indigo-400 border border-indigo-900/60' 
-        : 'bg-indigo-50 text-indigo-700 border border-indigo-200',
-    };
-    return styles[status] || styles.Draft;
-  };
-
   return (
     <div className={`p-4 rounded-xl border ${
       isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-white border-zinc-200'
@@ -29,10 +15,20 @@ const MobileReportCard = ({ report, role, onEdit, onDelete, onReview, isDark }) 
             <p className={`text-[10px] ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>{report.user?.department || 'N/A'}</p>
           </div>
         )}
-        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${getStatusStyle(report.status)}`}>
+        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${getReportStatusStyle(report.status, isDark)}`}>
           {report.status}
         </span>
       </div>
+
+      {/* Late Warning Banner */}
+      {report.status === 'Late' && (
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg mb-3 text-[10px] font-semibold ${
+          isDark ? 'bg-amber-950/30 text-amber-400 border border-amber-900/40' : 'bg-amber-50 text-amber-700 border border-amber-200'
+        }`}>
+          <AlertTriangle size={13} className="shrink-0" />
+          <span>This report was submitted after the project deadline.</span>
+        </div>
+      )}
 
       {/* Week + Project */}
       <div className="flex flex-wrap gap-3 mb-3">
@@ -138,21 +134,6 @@ const ReportTable = ({
     }
   };
 
-  const getStatusStyle = (status) => {
-    const styles = {
-      Draft: isDark 
-        ? 'bg-zinc-800/80 text-zinc-400 border border-zinc-700/60' 
-        : 'bg-zinc-105 text-zinc-600 border border-zinc-200',
-      Submitted: isDark 
-        ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/60' 
-        : 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-      Reviewed: isDark 
-        ? 'bg-indigo-950/40 text-indigo-400 border border-indigo-900/60' 
-        : 'bg-indigo-50 text-indigo-700 border border-indigo-200',
-    };
-    return styles[status] || styles.Draft;
-  };
-
   // Sorting logic
   const sortedReports = [...reports].sort((a, b) => {
     let aVal = a[sortField];
@@ -215,7 +196,7 @@ const ReportTable = ({
             </tr>
           ) : (
             sortedReports.map((report) => (
-              <tr key={report._id} className={`transition-colors ${isDark ? 'hover:bg-zinc-900/10' : 'hover:bg-zinc-50/50'}`}>
+              <tr key={report._id} className={`transition-colors ${report.status === 'Late' ? (isDark ? 'bg-amber-950/10' : 'bg-amber-50/30') : ''} ${isDark ? 'hover:bg-zinc-900/10' : 'hover:bg-zinc-50/50'}`}>
                 {role === 'Manager' && (
                   <td className="p-4">
                     <div className="font-medium text-zinc-100">{report.user?.name || 'Unknown'}</div>
@@ -252,9 +233,14 @@ const ReportTable = ({
                   {report.hoursWorked !== undefined && report.hoursWorked !== null ? `${report.hoursWorked} hrs` : '-'}
                 </td>
                 <td className="p-4">
-                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${getStatusStyle(report.status)}`}>
-                    {report.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${getReportStatusStyle(report.status, isDark)}`}>
+                      {report.status}
+                    </span>
+                    {report.status === 'Late' && (
+                      <AlertTriangle size={13} className="text-amber-400 shrink-0" title="Submitted after project deadline" />
+                    )}
+                  </div>
                 </td>
                 <td className="p-4 text-right">
                   <div className="flex justify-end gap-1">

@@ -9,6 +9,7 @@ import FilterBar from '../components/Dashboard/FilterBar';
 import ReportDetailModal from '../components/Dashboard/ReportDetailModal';
 import ProjectFormModal from '../components/Dashboard/ProjectFormModal';
 import AnalyticsCharts from '../components/Charts/AnalyticsCharts';
+import LateSubmissionsAuditLog from '../components/Dashboard/LateSubmissionsAuditLog';
 import ChatAssistant from '../components/Common/ChatAssistant';
 import { StatsGridSkeleton, TableSkeleton, ChartSkeleton } from '../components/Common/LoadingSkeleton';
 import reportService from '../services/reportService';
@@ -393,6 +394,9 @@ const ManagerDashboard = () => {
               onDelete={handleDeleteProject}
               isDark={isDark}
             />
+
+            {/* Late Submissions Audit Log */}
+            <LateSubmissionsAuditLog isDark={isDark} />
 
             {/* Team Reports Feed with Filters */}
             <div className={`rounded-xl border ${isDark ? 'bg-zinc-900/20 border-zinc-800' : 'bg-white border-zinc-200'}`}>

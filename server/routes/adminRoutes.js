@@ -3,6 +3,7 @@ import {
   getReports,
   getDashboardAnalytics,
   getMetricsCharts,
+  getLateSubmissions,
 } from '../controllers/reportController.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
 
@@ -19,5 +20,6 @@ router.get('/metrics-charts', getMetricsCharts);
 router.get('/reports', getReports);
 router.get('/metrics', getDashboardAnalytics);
 router.get('/charts', getDashboardAnalytics);
+router.get('/late-submissions', getLateSubmissions);
 
 export default router;
