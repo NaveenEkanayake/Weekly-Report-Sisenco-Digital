@@ -73,6 +73,14 @@ const reportSchema = new mongoose.Schema(
 // Compound index to ensure one report per user per week
 reportSchema.index({ user: 1, weekStartDate: 1 }, { unique: true });
 
+// Pre-validate: blockerDetails required when hasBlocker is true
+reportSchema.pre('validate', function (next) {
+  if (this.hasBlocker && (!this.blockerDetails || this.blockerDetails.trim() === '')) {
+    this.invalidate('blockerDetails', 'Blocker details are required when a blocker is reported');
+  }
+  next();
+});
+
 const Report = mongoose.model('Report', reportSchema);
 
 export default Report;

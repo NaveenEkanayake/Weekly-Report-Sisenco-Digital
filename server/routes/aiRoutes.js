@@ -4,8 +4,8 @@ import { protect, authorize } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// AI routes require authentication
+// AI routes require authentication + Manager role
 router.use(protect);
-router.post('/chat', chatWithAssistant);
+router.post('/chat', authorize('Manager'), chatWithAssistant);
 
 export default router;
