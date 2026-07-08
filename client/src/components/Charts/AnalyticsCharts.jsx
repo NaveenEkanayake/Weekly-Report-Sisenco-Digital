@@ -52,7 +52,8 @@ const AnalyticsCharts = ({ data, theme = 'dark' }) => {
 
   // Format trend data for display
   const formattedTrend = weeklyTrend.map(item => {
-    const date = new Date(item._id);
+    const [year, month, day] = item._id.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
     return {
       name: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       submissions: item.count

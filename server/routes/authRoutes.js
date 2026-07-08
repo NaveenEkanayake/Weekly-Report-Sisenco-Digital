@@ -7,6 +7,7 @@ import {
   getAllUsers,
   forgotPassword,
   resetPassword,
+  logout,
 } from '../controllers/authController.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
 
@@ -28,6 +29,7 @@ const registerValidation = [
 // Public routes
 router.post('/register', registerValidation, register);
 router.post('/login', login);
+router.post('/logout', logout);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 

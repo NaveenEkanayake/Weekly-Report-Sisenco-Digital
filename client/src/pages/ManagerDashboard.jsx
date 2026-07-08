@@ -354,7 +354,7 @@ const ManagerDashboard = () => {
             ) : analytics?.summary ? (
               <StatsGrid
                 totalReports={analytics.summary.totalReports || 0}
-                submittedCount={analytics.summary.submittedCount || 0}
+                submittedCount={(analytics.summary.submittedCount || 0) + (analytics.summary.reviewedCount || 0)}
                 draftsCount={analytics.summary.draftCount || 0}
                 lateCount={analytics.summary.lateCount || 0}
                 openBlockersCount={analytics.summary.activeBlockers || 0}

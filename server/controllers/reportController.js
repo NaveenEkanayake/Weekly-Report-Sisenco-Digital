@@ -346,8 +346,15 @@ export const getDashboardAnalytics = async (req, res) => {
 
     const now = new Date();
 
-    // Default to current week if no dates provided
-    const start = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 7));
+    // Default to 7 days ago (start of day) if no dates provided
+    const start = startDate 
+      ? new Date(startDate) 
+      : (() => {
+          const d = new Date();
+          d.setDate(d.getDate() - 7);
+          d.setHours(0, 0, 0, 0);
+          return d;
+        })();
     const end = endDate ? new Date(endDate + 'T23:59:59.999Z') : new Date();
 
     // Total active team members
@@ -361,10 +368,16 @@ export const getDashboardAnalytics = async (req, res) => {
       weekStartDate: { $gte: start, $lte: end }
     });
 
-    // Submitted/Reviewed reports
+    // Submitted reports (only 'Submitted' status)
     const submittedCount = await Report.countDocuments({
       weekStartDate: { $gte: start, $lte: end },
-      status: { $in: ['Submitted', 'Reviewed'] }
+      status: 'Submitted'
+    });
+
+    // Reviewed reports (only 'Reviewed' status)
+    const reviewedCount = await Report.countDocuments({
+      weekStartDate: { $gte: start, $lte: end },
+      status: 'Reviewed'
     });
 
     // Draft reports
@@ -382,7 +395,7 @@ export const getDashboardAnalytics = async (req, res) => {
     });
 
     // ── Project-Timeline Compliance Rate ──
-    // Get all projects with startDate defined
+    // Get all active projects with startDate defined
     const projects = await Project.find({
       startDate: { $exists: true, $ne: null },
       status: 'Active',
@@ -393,12 +406,14 @@ export const getDashboardAnalytics = async (req, res) => {
 
     for (const project of projects) {
       const weekSlots = generateWeekSlots(project.startDate, project.endDate || now);
-      totalElapsedWeeks += weekSlots.length;
 
       // Count submitted weeks for members assigned to this project
       const memberIds = project.assignedMembers.length > 0 
         ? project.assignedMembers 
         : await User.find({ role: 'Team Member', isActive: true }).distinct('_id');
+
+      // Adjust total elapsed weeks by multiplying slots by assigned members
+      totalElapsedWeeks += weekSlots.length * memberIds.length;
 
       for (const memberId of memberIds) {
         for (const slot of weekSlots) {
@@ -420,7 +435,7 @@ export const getDashboardAnalytics = async (req, res) => {
     if (totalElapsedWeeks > 0) {
       complianceRate = parseFloat(((totalSubmittedWeeks / totalElapsedWeeks) * 100).toFixed(1));
     } else if (totalUsers > 0) {
-      complianceRate = parseFloat(((submittedCount / totalUsers) * 100).toFixed(1));
+      complianceRate = parseFloat((((submittedCount + reviewedCount) / totalUsers) * 100).toFixed(1));
     }
 
     // Reports by project
@@ -487,10 +502,27 @@ export const getDashboardAnalytics = async (req, res) => {
       weekStartDate: { $gte: start, $lte: end }
     });
 
-    const submissionCompliance = teamMembers.map(member => {
+    const submissionCompliance = [];
+    for (const member of teamMembers) {
       const memberReport = reportsForWeek.find(r => r.user.toString() === member._id.toString());
       let submissionStatus = 'Pending';
       let reportId = null;
+
+      // Check if this member is expected to submit a report for the current week (assigned to any active project this week)
+      const memberProjects = await Project.find({
+        status: 'Active',
+        startDate: { $lte: end, $ne: null },
+        $or: [
+          { endDate: { $exists: false } },
+          { endDate: null },
+          { endDate: { $gte: start } }
+        ],
+        $or: [
+          { assignedMembers: member._id },
+          { assignedMembers: { $size: 0 } } // fallback if empty
+        ]
+      });
+      const isExpected = memberProjects.length > 0;
 
       if (memberReport) {
         reportId = memberReport._id;
@@ -502,10 +534,14 @@ export const getDashboardAnalytics = async (req, res) => {
           submissionStatus = now > end ? 'Late' : 'Pending';
         }
       } else {
-        submissionStatus = now > end ? 'Late' : 'Pending';
+        if (!isExpected) {
+          submissionStatus = 'N/A';
+        } else {
+          submissionStatus = now > end ? 'Late' : 'Pending';
+        }
       }
 
-      return {
+      submissionCompliance.push({
         user: {
           _id: member._id,
           name: member.name,
@@ -515,8 +551,8 @@ export const getDashboardAnalytics = async (req, res) => {
         },
         status: submissionStatus,
         reportId
-      };
-    });
+      });
+    }
 
     // Compute lateCount/pendingCount from submissionCompliance
     const lateCount = submissionCompliance.filter(s => s.status === 'Late').length;
@@ -528,6 +564,7 @@ export const getDashboardAnalytics = async (req, res) => {
         summary: {
           totalReports,
           submittedCount,
+          reviewedCount,
           draftCount,
           lateCount,
           pendingCount,

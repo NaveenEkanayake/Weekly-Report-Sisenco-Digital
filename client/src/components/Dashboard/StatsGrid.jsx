@@ -8,6 +8,7 @@ const StatsGrid = ({
   lateCount = null, 
   openBlockersCount = null, 
   complianceRate = null, 
+  thisWeekStatus = null,
   isDark 
 }) => {
   const cards = [
@@ -61,6 +62,17 @@ const StatsGrid = ({
       icon: Activity,
       color: 'text-sky-500',
       bg: 'bg-sky-500/10'
+    });
+  }
+
+  if (thisWeekStatus !== null) {
+    const isSubmitted = thisWeekStatus === 'Submitted' || thisWeekStatus === 'Reviewed';
+    cards.push({
+      label: 'This Week',
+      count: thisWeekStatus,
+      icon: isSubmitted ? FileCheck : Clock,
+      color: isSubmitted ? 'text-emerald-500' : 'text-amber-500',
+      bg: isSubmitted ? 'bg-emerald-500/10' : 'bg-amber-500/10'
     });
   }
 

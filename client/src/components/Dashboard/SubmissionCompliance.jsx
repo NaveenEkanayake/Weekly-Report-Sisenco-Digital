@@ -4,7 +4,8 @@ const getComplianceDot = (status) => {
   const styles = {
     Submitted: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]',
     Pending: 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse',
-    Late: 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)] animate-pulse'
+    Late: 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)] animate-pulse',
+    'N/A': 'bg-zinc-500 shadow-[0_0_8px_rgba(113,113,122,0.5)]'
   };
   return styles[status] || 'bg-zinc-500';
 };

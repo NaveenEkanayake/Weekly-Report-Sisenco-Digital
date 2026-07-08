@@ -36,9 +36,19 @@ const ReportFormModal = ({
         notes: editingReport.notes || '',
       });
     } else {
+      const now = new Date();
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      
+      const thisMonday = new Date(now);
+      thisMonday.setDate(diff);
+      
+      const thisSunday = new Date(thisMonday);
+      thisSunday.setDate(thisMonday.getDate() + 6);
+
       setFormData({
-        weekStartDate: '',
-        weekEndDate: '',
+        weekStartDate: thisMonday.toISOString().split('T')[0],
+        weekEndDate: thisSunday.toISOString().split('T')[0],
         project: '',
         tasksCompleted: '',
         tasksPlanned: '',

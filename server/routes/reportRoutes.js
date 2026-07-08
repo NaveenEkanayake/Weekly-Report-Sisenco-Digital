@@ -28,7 +28,9 @@ router.use(protect);
 // Analytics route (Manager only)
 router.get('/analytics/dashboard', authorize('Manager'), getDashboardAnalytics);
 
-// CRUD routes
+// Alias: GET /reports/me — Team Member's own reports (must be before /:id)
+router.get('/me', getReports);
+
 router.route('/')
   .get(getReports)
   .post(reportValidation, createReport);

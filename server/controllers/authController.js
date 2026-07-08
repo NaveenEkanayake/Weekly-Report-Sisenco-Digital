@@ -140,6 +140,19 @@ export const login = async (req, res) => {
   }
 };
 
+// @desc    Logout user / clear client token
+// @route   POST /api/auth/logout
+// @access  Public
+export const logout = async (req, res) => {
+  // Since we use client-side JWT (localStorage), we just send a success response.
+  // The client will clear the token.
+  res.json({
+    success: true,
+    message: 'Logged out successfully',
+    data: {},
+  });
+};
+
 // @desc    Get current logged in user
 // @route   GET /api/auth/me
 // @access  Private
@@ -166,7 +179,9 @@ export const getMe = async (req, res) => {
 // @access  Private/Manager
 export const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({ isActive: true }).select('-password');
+    const { includeInactive } = req.query;
+    const filter = includeInactive === 'true' ? {} : { isActive: true };
+    const users = await User.find(filter).select('-password');
     res.json({
       success: true,
       count: users.length,
@@ -184,15 +199,27 @@ export const getAllUsers = async (req, res) => {
 
 import nodemailer from 'nodemailer';
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.EMAIL_PORT || '587'),
-  secure: process.env.EMAIL_PORT === '465', // true for 465 (SSL), false for 587 (STARTTLS)
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+const emailHost = process.env.EMAIL_HOST || 'smtp.gmail.com';
+
+const transportConfig = emailHost.includes('gmail')
+  ? {
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    }
+  : {
+      host: emailHost,
+      port: parseInt(process.env.EMAIL_PORT || '587'),
+      secure: process.env.EMAIL_PORT === '465',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    };
+
+const transporter = nodemailer.createTransport(transportConfig);
 
 // @desc    Forgot Password - Request OTP code
 // @route   POST /api/auth/forgot-password

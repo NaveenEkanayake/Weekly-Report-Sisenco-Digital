@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Sparkles } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import api from '../../services/api';
 
 const ChatAssistant = ({ theme = 'dark' }) => {
@@ -69,7 +70,10 @@ const ChatAssistant = ({ theme = 'dark' }) => {
   const suggestions = [
     "Summarize team activity",
     "Show active blockers",
-    "Show project workloads"
+    "What did the team work on?",
+    "Show project workloads",
+    "What's the compliance rate?",
+    "Give me recommendations",
   ];
 
   return (
@@ -121,14 +125,20 @@ const ChatAssistant = ({ theme = 'dark' }) => {
                   msg.sender === 'user' ? 'ml-auto items-end' : 'mr-auto items-start'
                 }`}
               >
-                <div className={`px-3 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-line ${
+                <div className={`px-3 py-2 rounded-xl text-xs leading-relaxed ${
                   msg.sender === 'user'
-                    ? 'bg-indigo-600 text-white rounded-tr-none'
+                    ? 'bg-indigo-600 text-white rounded-tr-none whitespace-pre-line'
                     : isDark 
                       ? 'bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-tl-none' 
                       : 'bg-white border border-zinc-200 text-zinc-800 rounded-tl-none'
                 }`}>
-                  {msg.text}
+                  {msg.sender === 'ai' ? (
+                    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ul:pl-4 prose-li:my-0.5">
+                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    msg.text
+                  )}
                 </div>
                 <span className={`text-[8px] mt-1 opacity-55 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
                   {new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
