@@ -79,8 +79,10 @@ const Navbar = ({ theme = 'dark', toggleTheme, onSearch }) => {
   const handleMarkAllRead = async () => {
     try {
       await reportService.markAllNotificationsRead();
-      setNotifications([]);
-      setUnreadCount(0);
+      // Re-fetch to confirm backend persisted the change
+      const res = await reportService.getNotifications(true);
+      setNotifications(res.data || []);
+      setUnreadCount(res.unreadCount || 0);
     } catch (err) {
       console.error('Failed to mark all as read:', err);
     }
@@ -89,8 +91,10 @@ const Navbar = ({ theme = 'dark', toggleTheme, onSearch }) => {
   const handleMarkRead = async (id) => {
     try {
       await reportService.markNotificationRead(id);
-      setNotifications(prev => prev.filter(n => n._id !== id));
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      // Re-fetch to confirm backend persisted the change
+      const res = await reportService.getNotifications(true);
+      setNotifications(res.data || []);
+      setUnreadCount(res.unreadCount || 0);
     } catch (err) {
       console.error('Failed to mark notification read:', err);
     }

@@ -337,6 +337,206 @@ export const deleteReport = async (req, res) => {
   }
 };
 
+// @desc    Get unified metrics + charts data (specific format for admin dashboard)
+// @route   GET /api/admin/metrics-charts
+// @query   ?member=userId&project=projectId&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+// @access  Private/Manager
+export const getMetricsCharts = async (req, res) => {
+  try {
+    const { member, project, startDate, endDate } = req.query;
+    const now = new Date();
+
+    // ── Date range ──
+    const start = startDate 
+      ? new Date(startDate) 
+      : (() => {
+          const d = new Date();
+          d.setDate(d.getDate() - 7);
+          d.setHours(0, 0, 0, 0);
+          return d;
+        })();
+    const end = endDate 
+      ? new Date(endDate + 'T23:59:59.999Z') 
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    // ── 1. Fetch all active projects with assignments and deadlines ──
+    const activeProjects = await Project.find({
+      status: 'Active',
+    }).select('name assignedMembers startDate endDate');
+
+    // Build a Set of member IDs who are assigned to at least one active project
+    const assignedMemberIds = new Set();
+    const projectDeadlines = []; // { memberId, deadlineEndOfDay }
+    for (const proj of activeProjects) {
+      if (proj.assignedMembers.length === 0) {
+        // No specific members assigned → all active team members are expected
+        const allMembers = await User.find({ role: 'Team Member', isActive: true }).distinct('_id');
+        for (const mid of allMembers) {
+          assignedMemberIds.add(mid.toString());
+          if (proj.endDate) {
+            projectDeadlines.push({ memberId: mid.toString(), deadline: new Date(proj.endDate) });
+          }
+        }
+      } else {
+        for (const mid of proj.assignedMembers) {
+          const midStr = mid.toString();
+          assignedMemberIds.add(midStr);
+          if (proj.endDate) {
+            projectDeadlines.push({ memberId: midStr, deadline: new Date(proj.endDate) });
+          }
+        }
+      }
+    }
+
+    // totalExpected = only members assigned to active projects
+    const totalExpected = assignedMemberIds.size;
+
+    // ── 2. Reports in period (with optional member/project filters) ──
+    const reportFilter = {
+      weekStartDate: { $gte: start, $lte: end }
+    };
+    if (member) reportFilter.user = member;
+    if (project) reportFilter.project = project;
+
+    const reports = await Report.find(reportFilter)
+      .populate('project', 'name endDate')
+      .populate('user', 'name');
+
+    // ── 3. Compute per-member status ──
+    let onTimeCount = 0;
+    let lateCount = 0;
+    let openBlockers = 0;
+
+    // Track which assigned members have been accounted for (have ANY report)
+    const accountedMembers = new Set();
+
+    for (const report of reports) {
+      if (report.hasBlocker) openBlockers++;
+
+      const memberId = report.user?._id?.toString();
+      if (memberId) accountedMembers.add(memberId);
+
+      let isLate = false;
+      const submitTime = report.submittedAt || report.createdAt;
+
+      if (report.status === 'Late') {
+        isLate = true;
+      } else if (report.status === 'Submitted' || report.status === 'Reviewed') {
+        // Late if submitted after the week's end
+        if (submitTime && report.weekEndDate && submitTime > report.weekEndDate) {
+          isLate = true;
+        } else if (submitTime && report.project?.endDate && submitTime > report.project.endDate) {
+          // Submitted after the project's deadline (midnight UTC)
+          isLate = true;
+        } else if (report.weekEndDate && report.project?.endDate && report.weekEndDate > report.project.endDate) {
+          // Report's week extends beyond the project's end date
+          isLate = true;
+        }
+      }
+
+      if (isLate) {
+        lateCount++;
+      } else if (report.status === 'Submitted' || report.status === 'Reviewed') {
+        onTimeCount++;
+      }
+    }
+
+    // For assigned members with NO report: check if ANY of their project deadlines have passed
+    for (const memberId of assignedMemberIds) {
+      if (accountedMembers.has(memberId)) continue;
+
+      const memberDeadlines = projectDeadlines.filter(pd => pd.memberId === memberId);
+      const anyDeadlinePassed = memberDeadlines.some(pd => pd.deadline < now);
+
+      if (anyDeadlinePassed) {
+        lateCount++;
+      }
+    }
+
+    // pendingCount = assigned members who have neither on-time nor late status
+    const pendingCount = Math.max(0, totalExpected - (onTimeCount + lateCount));
+
+    // Compliance rate: (On-Time / Total Expected) × 100
+    let complianceRate;
+    if (totalExpected > 0) {
+      complianceRate = parseFloat(((onTimeCount / totalExpected) * 100).toFixed(1));
+    } else if ((onTimeCount + lateCount) > 0) {
+      complianceRate = parseFloat(((onTimeCount / (onTimeCount + lateCount)) * 100).toFixed(1));
+    } else {
+      complianceRate = 0;
+    }
+
+    // ── 4. Chart: submissionStatus ──
+    const submissionStatus = [
+      { status: 'Submitted On-Time', value: onTimeCount, color: '#10B981' },
+      { status: 'Late', value: lateCount, color: '#F59E0B' },
+      { status: 'Pending/Draft', value: pendingCount, color: '#EF4444' },
+    ].filter(d => d.value > 0);
+
+    // ── 5. Chart: workloadDistribution ──
+    const workloadByProject = {};
+    for (const report of reports) {
+      const pid = report.project?._id?.toString() || 'unknown';
+      if (!workloadByProject[pid]) {
+        workloadByProject[pid] = {
+          projectName: report.project?.name || 'Unknown Project',
+          hours: 0,
+          taskCount: 0,
+        };
+      }
+      workloadByProject[pid].hours += (report.hoursWorked || 0);
+      // Count task items (newline-separated lines in tasksCompleted)
+      const tasks = (report.tasksCompleted || '').split('\n').filter(t => t.trim());
+      workloadByProject[pid].taskCount += tasks.length;
+    }
+    const workloadDistribution = Object.values(workloadByProject);
+
+    // ── 6. Chart: tasksCompletedTrend ──
+    const weekGroups = {};
+    for (const report of reports) {
+      if (!report.weekStartDate) continue;
+      const d = new Date(report.weekStartDate);
+      const weekLabel = `Week ${Math.ceil((d - new Date(d.getFullYear(), 0, 1)) / 604800000)}`;
+      if (!weekGroups[weekLabel]) weekGroups[weekLabel] = 0;
+      const tasks = (report.tasksCompleted || '').split('\n').filter(t => t.trim());
+      weekGroups[weekLabel] += tasks.length;
+    }
+    const tasksCompletedTrend = Object.entries(weekGroups)
+      .map(([week, completedCount]) => ({ week, completedCount }))
+      .sort((a, b) => {
+        const numA = parseInt(a.week.replace('Week ', ''));
+        const numB = parseInt(b.week.replace('Week ', ''));
+        return numA - numB;
+      });
+
+    // ── Response ──
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          totalSubmitted: onTimeCount,
+          lateSubmissions: lateCount,
+          pendingReports: pendingCount,
+          complianceRate,
+          openBlockersCount: openBlockers,
+        },
+        charts: {
+          submissionStatus,
+          workloadDistribution,
+          tasksCompletedTrend,
+        },
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    });
+  }
+};
+
 // @desc    Get analytics/dashboard data (project-timeline based)
 // @route   GET /api/reports/analytics/dashboard
 // @access  Private/Manager
@@ -394,47 +594,69 @@ export const getDashboardAnalytics = async (req, res) => {
       weekStartDate: { $gte: start, $lte: end },
     });
 
-    // ── Project-Timeline Compliance Rate ──
-    // Get all active projects with startDate defined
-    const projects = await Project.find({
+    // ── Project-Timeline Compliance Rate (optimized with batch queries) ──
+    const activeProjects = await Project.find({
       startDate: { $exists: true, $ne: null },
       status: 'Active',
     });
 
-    let totalElapsedWeeks = 0;
-    let totalSubmittedWeeks = 0;
+    let totalExpectedSubmissions = 0;
+    let totalOnTimeSubmissions = 0;
 
-    for (const project of projects) {
+    for (const project of activeProjects) {
       const weekSlots = generateWeekSlots(project.startDate, project.endDate || now);
 
-      // Count submitted weeks for members assigned to this project
       const memberIds = project.assignedMembers.length > 0 
         ? project.assignedMembers 
         : await User.find({ role: 'Team Member', isActive: true }).distinct('_id');
 
-      // Adjust total elapsed weeks by multiplying slots by assigned members
-      totalElapsedWeeks += weekSlots.length * memberIds.length;
+      if (weekSlots.length === 0 || memberIds.length === 0) continue;
+
+      // Batch fetch all submitted/reviewed reports for this project + members
+      const projectReports = await Report.find({
+        project: project._id,
+        user: { $in: memberIds },
+        weekStartDate: { 
+          $gte: weekSlots[0].weekStartDate, 
+          $lte: weekSlots[weekSlots.length - 1].weekStartDate 
+        },
+        status: { $in: ['Submitted', 'Reviewed'] }
+      });
+
+      // Build lookup map: key = `${userId}_${weekStartDate.getTime()}`
+      const reportMap = {};
+      for (const report of projectReports) {
+        const key = `${report.user}_${report.weekStartDate.getTime()}`;
+        reportMap[key] = report;
+      }
 
       for (const memberId of memberIds) {
         for (const slot of weekSlots) {
-          if (slot.weekStartDate <= now) {
-            const reportExists = await Report.findOne({
-              user: memberId,
-              project: project._id,
-              weekStartDate: slot.weekStartDate,
-              status: { $in: ['Submitted', 'Reviewed'] },
-            });
-            if (reportExists) totalSubmittedWeeks++;
+          // Only count weeks that have started (past or current)
+          if (slot.weekStartDate > now) continue;
+
+          totalExpectedSubmissions++;
+          const key = `${memberId}_${slot.weekStartDate.getTime()}`;
+          const report = reportMap[key];
+
+          if (report && report.submittedAt) {
+            // On time: submitted on or before the week's end (Sunday)
+            if (report.submittedAt <= slot.weekEndDate) {
+              totalOnTimeSubmissions++;
+            }
+            // Submitted after week end = late (counted as expected but NOT on-time)
           }
+          // No report at all = not on time
         }
       }
     }
 
-    // Fallback to simple compliance if no projects with dates
+    // Compute compliance rate from project-timeline data
     let complianceRate = 0;
-    if (totalElapsedWeeks > 0) {
-      complianceRate = parseFloat(((totalSubmittedWeeks / totalElapsedWeeks) * 100).toFixed(1));
+    if (totalExpectedSubmissions > 0) {
+      complianceRate = parseFloat(((totalOnTimeSubmissions / totalExpectedSubmissions) * 100).toFixed(1));
     } else if (totalUsers > 0) {
+      // Fallback: simple ratio of submitted users
       complianceRate = parseFloat((((submittedCount + reviewedCount) / totalUsers) * 100).toFixed(1));
     }
 
@@ -496,49 +718,70 @@ export const getDashboardAnalytics = async (req, res) => {
       },
     ]);
 
-    // Submission compliance per team member (with project-timeline awareness)
+    // Submission compliance per team member — late = submittedAt > weekEndDate
     const teamMembers = await User.find({ role: 'Team Member', isActive: true }).select('name email department');
-    const reportsForWeek = await Report.find({
+    const reportsInPeriod = await Report.find({
       weekStartDate: { $gte: start, $lte: end }
     });
 
-    const submissionCompliance = [];
-    for (const member of teamMembers) {
-      const memberReport = reportsForWeek.find(r => r.user.toString() === member._id.toString());
-      let submissionStatus = 'Pending';
-      let reportId = null;
-
-      // Check if this member is expected to submit a report for the current week (assigned to any active project this week)
-      const memberProjects = await Project.find({
-        status: 'Active',
-        startDate: { $lte: end, $ne: null },
+    // Get all active projects once to avoid per-member queries
+    const activeProjectsForCompliance = await Project.find({
+      status: 'Active',
+      $and: [{
         $or: [
           { endDate: { $exists: false } },
           { endDate: null },
           { endDate: { $gte: start } }
-        ],
-        $or: [
-          { assignedMembers: member._id },
-          { assignedMembers: { $size: 0 } } // fallback if empty
         ]
-      });
-      const isExpected = memberProjects.length > 0;
+      }]
+    }).select('assignedMembers');
 
-      if (memberReport) {
-        reportId = memberReport._id;
-        if (memberReport.status === 'Submitted' || memberReport.status === 'Reviewed') {
-          submissionStatus = 'Submitted';
-        } else if (memberReport.status === 'Late') {
+    // Group reports by user for fast lookup
+    const reportsByUser = {};
+    for (const report of reportsInPeriod) {
+      const uid = report.user.toString();
+      if (!reportsByUser[uid]) reportsByUser[uid] = [];
+      reportsByUser[uid].push(report);
+    }
+
+    const submissionCompliance = [];
+    for (const member of teamMembers) {
+      const uid = member._id.toString();
+      const memberReports = reportsByUser[uid] || [];
+      let submissionStatus = 'Pending';
+      let reportId = null;
+      let lastSubmittedAt = null;
+
+      // Check if member is expected (assigned to any active project)
+      const isExpected = activeProjectsForCompliance.some(p =>
+        p.assignedMembers.length === 0 ||
+        p.assignedMembers.some(m => m.toString() === uid)
+      );
+
+      if (!isExpected) {
+        submissionStatus = 'N/A';
+      } else if (memberReports.length > 0) {
+        // Use the latest report in the period
+        const latest = memberReports.sort((a, b) => b.weekStartDate - a.weekStartDate)[0];
+        reportId = latest._id;
+        lastSubmittedAt = latest.submittedAt;
+
+        if (latest.status === 'Submitted' || latest.status === 'Reviewed') {
+          // Check if it was submitted on time
+          if (latest.submittedAt && latest.weekEndDate && latest.submittedAt > latest.weekEndDate) {
+            submissionStatus = 'Late';
+          } else {
+            submissionStatus = 'Submitted';
+          }
+        } else if (latest.status === 'Late') {
           submissionStatus = 'Late';
         } else {
-          submissionStatus = now > end ? 'Late' : 'Pending';
+          // Draft — check if the week's deadline has passed
+          submissionStatus = (latest.weekEndDate && latest.weekEndDate < now) ? 'Late' : 'Pending';
         }
       } else {
-        if (!isExpected) {
-          submissionStatus = 'N/A';
-        } else {
-          submissionStatus = now > end ? 'Late' : 'Pending';
-        }
+        // No report at all — late if the query period's end has passed
+        submissionStatus = (end < now) ? 'Late' : 'Pending';
       }
 
       submissionCompliance.push({
@@ -547,7 +790,7 @@ export const getDashboardAnalytics = async (req, res) => {
           name: member.name,
           email: member.email,
           department: member.department,
-          lastSubmittedAt: memberReport ? memberReport.submittedAt : null
+          lastSubmittedAt
         },
         status: submissionStatus,
         reportId

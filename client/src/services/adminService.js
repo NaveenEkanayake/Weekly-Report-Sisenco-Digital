@@ -30,6 +30,16 @@ const adminService = {
     const response = await api.get(`/admin/charts?${params.toString()}`);
     return response.data;
   },
+
+  // GET /api/admin/metrics-charts — unified metrics + chart data (member, project, startDate, endDate)
+  getMetricsCharts: async (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, val]) => {
+      if (val) params.append(key, val);
+    });
+    const response = await api.get(`/admin/metrics-charts?${params.toString()}`);
+    return response.data;
+  },
 };
 
 export default adminService;

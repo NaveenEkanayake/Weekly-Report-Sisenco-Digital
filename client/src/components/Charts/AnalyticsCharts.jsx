@@ -2,6 +2,8 @@ import React from 'react';
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   PieChart,
   Pie,
   Cell,
@@ -47,100 +49,78 @@ const CustomTooltip = ({ active, payload, isDark, label }) => {
 };
 
 const AnalyticsCharts = ({ data, theme = 'dark' }) => {
-  const { reportsByProject = [], weeklyTrend = [], summary = {} } = data || {};
+  const { reportsByProject = [], weeklyTrend = [], summary = {}, charts } = data || {};
   const isDark = theme === 'dark';
 
-  // Format trend data for display
-  const formattedTrend = weeklyTrend.map(item => {
-    const [year, month, day] = item._id.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    return {
-      name: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      submissions: item.count
-    };
-  });
+  // Detect data source: new metrics-charts format vs old analytics format
+  const useNewFormat = charts && charts.submissionStatus;
 
-  // Compute submission status breakdown from summary
-  const statusData = [
-    { name: 'Submitted', value: summary.submittedCount || 0, color: '#10b981' },
-    { name: 'Draft', value: summary.draftCount || 0, color: '#f59e0b' },
-    { name: 'Reviewed', value: summary.reviewedCount || 0, color: '#6366f1' },
-  ].filter(item => item.value > 0);
+  // ── New format data ──
+  const submissionStatusData = useNewFormat
+    ? charts.submissionStatus
+    : [
+        { status: 'Submitted', value: summary.submittedCount || 0, color: '#10b981' },
+        { status: 'Draft', value: summary.draftCount || 0, color: '#f59e0b' },
+        { status: 'Reviewed', value: summary.reviewedCount || 0, color: '#6366f1' },
+      ].filter(d => d.value > 0);
 
-  // Fallback status data if summary doesn't have reviewedCount
-  const fallbackStatusData = statusData.length === 0
+  const workloadData = useNewFormat
+    ? charts.workloadDistribution
+    : reportsByProject
+        .filter(item => item.totalHours > 0)
+        .map((item, idx) => ({
+          projectName: item.projectName || 'Unknown',
+          hours: item.totalHours,
+          taskCount: item.count,
+          color: COLORS[idx % COLORS.length]
+        }));
+
+  const trendData = useNewFormat
+    ? charts.tasksCompletedTrend
+    : weeklyTrend.map(item => {
+        const [year, month, day] = item._id.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        return {
+          week: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          completedCount: item.count
+        };
+      });
+
+  // Fallback for old format status data
+  const fallbackSubmissionStatus = submissionStatusData.length === 0 && !useNewFormat
     ? [
-        { name: 'Submitted', value: summary.submittedCount || 1, color: '#10b981' },
-        { name: 'Draft', value: summary.draftCount || 1, color: '#f59e0b' },
-      ].filter(item => item.value > 0)
-    : statusData;
+        { status: 'Submitted', value: summary.submittedCount || 1, color: '#10b981' },
+        { status: 'Draft', value: summary.draftCount || 1, color: '#f59e0b' },
+      ].filter(d => d.value > 0)
+    : submissionStatusData;
 
-  // Hours by project (pie chart data from reportsByProject)
-  const hoursData = reportsByProject
-    .filter(item => item.totalHours > 0)
-    .map((item, idx) => ({
-      name: item.projectName || 'Unknown',
-      value: item.totalHours,
-      color: COLORS[idx % COLORS.length]
-    }));
+  // Workload chart data (with taskCount for bar chart)
+  const workloadChartData = workloadData.map((item, idx) => ({
+    name: item.projectName || item.name || 'Unknown',
+    hours: item.hours || item.value || 0,
+    tasks: item.taskCount || 0,
+    color: item.color || COLORS[idx % COLORS.length]
+  }));
+
+  // Trend chart data
+  const trendChartData = trendData.map(item => ({
+    name: item.week || item.name,
+    count: item.completedCount || item.submissions || 0
+  }));
+
+  // Donut chart data (new format uses status + value, old uses name + value)
+  const donutData = fallbackSubmissionStatus.map(d => ({
+    name: d.status || d.name,
+    value: d.value,
+    color: d.color
+  }));
 
   const textColor = isDark ? '#f4f4f5' : '#18181b';
   const mutedColor = isDark ? '#71717a' : '#a1a1aa';
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Weekly Submission Trend - Gantt-Style Chart */}
-      <div className={`p-6 rounded-xl border transition-all duration-300 lg:col-span-2 ${
-        isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-white border-zinc-200'
-      }`}>
-        <h3 className={`text-sm font-semibold mb-6 flex items-center gap-2 ${
-          isDark ? 'text-zinc-200' : 'text-zinc-800'
-        }`}>
-          📊 Weekly Submission Timeline (Gantt View)
-        </h3>
-        <div className="h-[300px] w-full">
-          {formattedTrend.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={formattedTrend}
-                layout="vertical"
-                margin={{ top: 10, right: 30, left: 50, bottom: 0 }}
-                barSize={28}
-                barGap={4}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={isDark ? '#27272a' : '#f4f4f5'} />
-                <XAxis type="number" stroke={mutedColor} fontSize={10} tickLine={false} allowDecimals={false} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  stroke={mutedColor}
-                  fontSize={10}
-                  tickLine={false}
-                  width={80}
-                />
-                <Tooltip content={<CustomTooltip isDark={isDark} />} />
-                <Bar
-                  dataKey="submissions"
-                  radius={[0, 6, 6, 0]}
-                  background={{ fill: isDark ? '#27272a' : '#f4f4f5', radius: [0, 6, 6, 0] }}
-                >
-                  {formattedTrend.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.submissions > 0 ? '#6366f1' : isDark ? '#3f3f46' : '#d4d4d8'}
-                      opacity={Math.min(0.4 + (entry.submissions / Math.max(...formattedTrend.map(d => d.submissions), 1)) * 0.6, 1)}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-full flex items-center justify-center text-xs text-zinc-500">No trend data available</div>
-          )}
-        </div>
-      </div>
-
-      {/* Submission Status Breakdown (Pie Chart) */}
+      {/* Layer 2: Left — Submission Status Donut Chart */}
       <div className={`p-6 rounded-xl border transition-all duration-300 ${
         isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-white border-zinc-200'
       }`}>
@@ -150,11 +130,11 @@ const AnalyticsCharts = ({ data, theme = 'dark' }) => {
           🥧 Submission Status Breakdown
         </h3>
         <div className="h-[260px] w-full">
-          {fallbackStatusData.length > 0 ? (
+          {donutData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={fallbackStatusData}
+                  data={donutData}
                   cx="50%"
                   cy="50%"
                   innerRadius={55}
@@ -163,7 +143,7 @@ const AnalyticsCharts = ({ data, theme = 'dark' }) => {
                   dataKey="value"
                   label={renderCustomizedLabel}
                 >
-                  {fallbackStatusData.map((entry, index) => (
+                  {donutData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} stroke={isDark ? '#18181b' : '#fff'} strokeWidth={2} />
                   ))}
                 </Pie>
@@ -183,75 +163,66 @@ const AnalyticsCharts = ({ data, theme = 'dark' }) => {
         </div>
       </div>
 
-      {/* Workload by Project (Pie Chart - Hours) */}
+      {/* Layer 2: Right — Workload Distribution Bar Chart */}
       <div className={`p-6 rounded-xl border transition-all duration-300 ${
         isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-white border-zinc-200'
       }`}>
         <h3 className={`text-sm font-semibold mb-6 flex items-center gap-2 ${
           isDark ? 'text-zinc-200' : 'text-zinc-800'
         }`}>
-          🕐 Hours Worked by Project
+          📊 Workload Distribution by Project
         </h3>
         <div className="h-[260px] w-full">
-          {hoursData.length > 0 ? (
+          {workloadChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={hoursData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={40}
-                  outerRadius={90}
-                  paddingAngle={2}
-                  dataKey="value"
-                  label={renderCustomizedLabel}
-                >
-                  {hoursData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} stroke={isDark ? '#18181b' : '#fff'} strokeWidth={2} />
-                  ))}
-                </Pie>
+              <BarChart data={workloadChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#27272a' : '#f4f4f5'} />
+                <XAxis dataKey="name" stroke={mutedColor} fontSize={10} tickLine={false} />
+                <YAxis stroke={mutedColor} fontSize={10} tickLine={false} />
                 <Tooltip content={<CustomTooltip isDark={isDark} />} />
-                <Legend
-                  verticalAlign="bottom"
-                  height={30}
-                  iconType="circle"
-                  iconSize={8}
-                  formatter={(value) => <span className={`text-[10px] ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>{value}</span>}
-                />
-              </PieChart>
+                <Bar dataKey="hours" name="Hours Worked" radius={[4, 4, 0, 0]}>
+                  {workloadChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-full flex items-center justify-center text-xs text-zinc-500">No hours data available</div>
+            <div className="h-full flex items-center justify-center text-xs text-zinc-500">No workload data available</div>
           )}
         </div>
       </div>
 
-      {/* Reports by Project (Bar Chart) */}
+      {/* Layer 2: Bottom — Tasks Completed Trend Line Chart */}
       <div className={`p-6 rounded-xl border transition-all duration-300 lg:col-span-2 ${
         isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-white border-zinc-200'
       }`}>
         <h3 className={`text-sm font-semibold mb-6 flex items-center gap-2 ${
           isDark ? 'text-zinc-200' : 'text-zinc-800'
         }`}>
-          📊 Reports Count by Project
+          📈 Tasks Completed Trend
         </h3>
-        <div className="h-[260px] w-full">
-          {reportsByProject.length > 0 ? (
+        <div className="h-[280px] w-full">
+          {trendChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={reportsByProject} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+              <LineChart data={trendChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#27272a' : '#f4f4f5'} />
-                <XAxis dataKey="projectName" stroke={mutedColor} fontSize={10} tickLine={false} />
-                <YAxis stroke={mutedColor} fontSize={10} tickLine={false} />
+                <XAxis dataKey="name" stroke={mutedColor} fontSize={10} tickLine={false} />
+                <YAxis stroke={mutedColor} fontSize={10} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip isDark={isDark} />} />
-                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                  {reportsByProject.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
+                <Line
+                  type="monotone"
+                  dataKey="count"
+                  name="Tasks Completed"
+                  stroke="#6366f1"
+                  strokeWidth={2.5}
+                  dot={{ fill: '#6366f1', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, fill: '#818cf8' }}
+                />
+              </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-full flex items-center justify-center text-xs text-zinc-500">No project data available</div>
+            <div className="h-full flex items-center justify-center text-xs text-zinc-500">No trend data available</div>
           )}
         </div>
       </div>

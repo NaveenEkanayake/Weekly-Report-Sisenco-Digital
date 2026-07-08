@@ -135,17 +135,6 @@ const MemberDashboard = () => {
   const submittedCount = reports.filter(r => r.status === 'Submitted' || r.status === 'Reviewed').length;
   const draftsCount = reports.filter(r => r.status === 'Draft').length;
 
-  // Calculate this week's status
-  const now = new Date();
-  const day = now.getDay();
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-  const thisMonday = new Date(now);
-  thisMonday.setDate(diff);
-  thisMonday.setHours(0, 0, 0, 0);
-
-  const thisWeekReport = reports.find(r => new Date(r.weekStartDate).getTime() === thisMonday.getTime());
-  const thisWeekStatus = thisWeekReport ? thisWeekReport.status : 'Pending';
-
   return (
     <div className={`min-h-screen flex flex-col transition-colors duration-300 ${
       isDark ? 'bg-zinc-950 text-zinc-100' : 'bg-zinc-50 text-zinc-900'
@@ -191,7 +180,6 @@ const MemberDashboard = () => {
                 totalReports={totalReports} 
                 submittedCount={submittedCount} 
                 draftsCount={draftsCount} 
-                thisWeekStatus={thisWeekStatus}
                 isDark={isDark} 
               />
             )}

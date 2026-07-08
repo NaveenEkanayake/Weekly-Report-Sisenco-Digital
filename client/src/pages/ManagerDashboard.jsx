@@ -6,13 +6,13 @@ import StatsGrid from '../components/Dashboard/StatsGrid';
 import ReportTable from '../components/Dashboard/ReportTable';
 import ProjectList from '../components/Dashboard/ProjectList';
 import FilterBar from '../components/Dashboard/FilterBar';
-import SubmissionCompliance from '../components/Dashboard/SubmissionCompliance';
 import ReportDetailModal from '../components/Dashboard/ReportDetailModal';
 import ProjectFormModal from '../components/Dashboard/ProjectFormModal';
 import AnalyticsCharts from '../components/Charts/AnalyticsCharts';
 import ChatAssistant from '../components/Common/ChatAssistant';
 import { StatsGridSkeleton, TableSkeleton, ChartSkeleton } from '../components/Common/LoadingSkeleton';
 import reportService from '../services/reportService';
+import adminService from '../services/adminService';
 import authService from '../services/authService';
 import { BookOpen, RefreshCw } from 'lucide-react';
 
@@ -65,13 +65,10 @@ const ManagerDashboard = () => {
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
 
+  // Filter state context: selectedMember, selectedProject, dateRange
   const [timePeriod, setTimePeriod] = useState('week');
-  const [filters, setFilters] = useState({
-    user: '',
-    project: '',
-    startDate: '',
-    endDate: '',
-  });
+  const [selectedMember, setSelectedMember] = useState('');
+  const [selectedProject, setSelectedProject] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [selectedReport, setSelectedReport] = useState(null);
@@ -82,34 +79,41 @@ const ManagerDashboard = () => {
 
   const isDark = theme === 'dark';
   const pollingRef = useRef(null);
-  const timePeriodRef = useRef(timePeriod);
-  const filtersRef = useRef(filters);
+  const filterStateRef = useRef({ timePeriod, selectedMember, selectedProject });
 
-  // Keep refs in sync with state to avoid stale closures in polling
-  useEffect(() => { timePeriodRef.current = timePeriod; }, [timePeriod]);
-  useEffect(() => { filtersRef.current = filters; }, [filters]);
+  // Keep ref in sync with state
+  useEffect(() => {
+    filterStateRef.current = { timePeriod, selectedMember, selectedProject };
+  }, [timePeriod, selectedMember, selectedProject]);
 
-  // Real-time auto-polling: refresh data every 10 seconds
-  // and also refresh when tab regains focus
+  // Real-time auto-polling every 10 seconds
   useEffect(() => {
     const startPolling = () => {
       pollingRef.current = setInterval(async () => {
         try {
-          const currentPeriod = timePeriodRef.current;
-          const currentFilters = filtersRef.current;
-          const dateRange = getDateRange(currentPeriod);
-          const analyticsFilters = dateRange.startDate
-            ? { startDate: dateRange.startDate, endDate: dateRange.endDate }
-            : {};
+          const { timePeriod: tp, selectedMember: sm, selectedProject: sp } = filterStateRef.current;
+          const dateRange = getDateRange(tp);
+          const metricsFilters = {
+            ...(dateRange.startDate ? { startDate: dateRange.startDate, endDate: dateRange.endDate } : {}),
+            ...(sm ? { member: sm } : {}),
+            ...(sp ? { project: sp } : {}),
+          };
 
-          const [analyticsRes, reportsRes, projectsRes, usersRes] = await Promise.all([
-            reportService.getDashboardAnalytics(analyticsFilters),
-            reportService.getReports({ ...currentFilters, ...analyticsFilters }),
+          // reports endpoint expects 'user', metrics-charts expects 'member'
+          const reportsFilters = {
+            ...(dateRange.startDate ? { startDate: dateRange.startDate, endDate: dateRange.endDate } : {}),
+            ...(sm ? { user: sm } : {}),
+            ...(sp ? { project: sp } : {}),
+          };
+
+          const [metricsRes, reportsRes, projectsRes, usersRes] = await Promise.all([
+            adminService.getMetricsCharts(metricsFilters),
+            reportService.getReports(reportsFilters),
             reportService.getProjects(),
             authService.getAllUsers(),
           ]);
 
-          setAnalytics(analyticsRes.data);
+          setAnalytics(metricsRes.data);
           setAnalyticsKey(prev => prev + 1);
           setReports(reportsRes.data || []);
           setProjects(projectsRes.data || []);
@@ -134,29 +138,35 @@ const ManagerDashboard = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [timePeriod, filters]);
+  }, [timePeriod, selectedMember, selectedProject]);
 
-  // Fetch dashboard data with current filters and period
+  // Fetch dashboard data with current filter state
   const fetchDashboardData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      // Apply time period to date filters for analytics
       const dateRange = getDateRange(timePeriod);
-      const analyticsFilters = dateRange.startDate ? {
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
-      } : {};
+      const metricsFilters = {
+        ...(dateRange.startDate ? { startDate: dateRange.startDate, endDate: dateRange.endDate } : {}),
+        ...(selectedMember ? { member: selectedMember } : {}),
+        ...(selectedProject ? { project: selectedProject } : {}),
+      };
+      // reports endpoint expects 'user' not 'member'
+      const reportsFilters = {
+        ...(dateRange.startDate ? { startDate: dateRange.startDate, endDate: dateRange.endDate } : {}),
+        ...(selectedMember ? { user: selectedMember } : {}),
+        ...(selectedProject ? { project: selectedProject } : {}),
+      };
 
-      const [analyticsRes, reportsRes, projectsRes, usersRes] = await Promise.all([
-        reportService.getDashboardAnalytics(analyticsFilters),
-        reportService.getReports({ ...filters, ...analyticsFilters }),
+      const [metricsRes, reportsRes, projectsRes, usersRes] = await Promise.all([
+        adminService.getMetricsCharts(metricsFilters),
+        reportService.getReports(reportsFilters),
         reportService.getProjects(),
         authService.getAllUsers(),
       ]);
 
-      setAnalytics(analyticsRes.data);
+      setAnalytics(metricsRes.data);
       setAnalyticsKey(prev => prev + 1);
       setReports(reportsRes.data || []);
       setProjects(projectsRes.data || []);
@@ -168,7 +178,7 @@ const ManagerDashboard = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [timePeriod, filters]);
+  }, [timePeriod, selectedMember, selectedProject]);
 
   // Initial load
   useEffect(() => {
@@ -194,46 +204,47 @@ const ManagerDashboard = () => {
 
   const handleTimePeriodChange = (period) => {
     setTimePeriod(period);
-    // Reset custom date filters when using presets
-    if (period !== 'all') {
-      const dateRange = getDateRange(period);
-      setFilters(prev => ({ ...prev, startDate: dateRange.startDate || '', endDate: dateRange.endDate || '' }));
-    } else {
-      setFilters(prev => ({ ...prev, startDate: '', endDate: '' }));
-    }
   };
 
   const handleFilterChange = async (e) => {
-    const newFilters = { ...filters, [e.target.name]: e.target.value };
-    setFilters(newFilters);
+    const { name, value } = e.target;
+    const member = name === 'user' ? value : selectedMember;
+    const project = name === 'project' ? value : selectedProject;
+
+    if (name === 'user') setSelectedMember(value);
+    if (name === 'project') setSelectedProject(value);
+
     try {
       const dateRange = getDateRange(timePeriod);
-      const analyticsFilters = dateRange.startDate ? { startDate: dateRange.startDate, endDate: dateRange.endDate } : {};
-      const [reportsRes, analyticsRes] = await Promise.all([
-        reportService.getReports({ ...newFilters, ...analyticsFilters }),
-        reportService.getDashboardAnalytics(analyticsFilters),
+      const baseFilters = dateRange.startDate
+        ? { startDate: dateRange.startDate, endDate: dateRange.endDate }
+        : {};
+
+      const [reportsRes, metricsRes] = await Promise.all([
+        reportService.getReports({ ...baseFilters, ...(member ? { user: member } : {}), ...(project ? { project } : {}) }),
+        adminService.getMetricsCharts({ ...baseFilters, ...(member ? { member } : {}), ...(project ? { project } : {}) }),
       ]);
       setReports(reportsRes.data || []);
-      setAnalytics(analyticsRes.data);
+      setAnalytics(metricsRes.data);
       setAnalyticsKey(prev => prev + 1);
     } catch (err) {
-      console.error('Error filtering reports:', err);
+      console.error('Error filtering:', err);
     }
   };
 
   const resetFilters = async () => {
-    const defaultFilters = { user: '', project: '', startDate: '', endDate: '' };
-    setFilters(defaultFilters);
+    setSelectedMember('');
+    setSelectedProject('');
     setTimePeriod('week');
     const dateRange = getDateRange('week');
-    const analyticsFilters = { startDate: dateRange.startDate, endDate: dateRange.endDate };
+    const filters = { startDate: dateRange.startDate, endDate: dateRange.endDate };
     try {
-      const [reportsRes, analyticsRes] = await Promise.all([
-        reportService.getReports({ ...defaultFilters, ...analyticsFilters }),
-        reportService.getDashboardAnalytics(analyticsFilters),
+      const [reportsRes, metricsRes] = await Promise.all([
+        reportService.getReports(filters),
+        adminService.getMetricsCharts(filters),
       ]);
       setReports(reportsRes.data || []);
-      setAnalytics(analyticsRes.data);
+      setAnalytics(metricsRes.data);
       setAnalyticsKey(prev => prev + 1);
     } catch (err) {
       console.error('Error resetting filters:', err);
@@ -348,42 +359,30 @@ const ManagerDashboard = () => {
               </button>
             </div>
 
-            {/* Stats Grid */}
+            {/* Layer 1: Top Summary Grid (Manager-specific — includes Open Blockers) */}
             {loading ? (
               <StatsGridSkeleton isDark={isDark} count={5} />
             ) : analytics?.summary ? (
               <StatsGrid
-                totalReports={analytics.summary.totalReports || 0}
-                submittedCount={(analytics.summary.submittedCount || 0) + (analytics.summary.reviewedCount || 0)}
-                draftsCount={analytics.summary.draftCount || 0}
-                lateCount={analytics.summary.lateCount || 0}
-                openBlockersCount={analytics.summary.activeBlockers || 0}
+                isManager={true}
+                totalSubmitted={analytics.summary.totalSubmitted || 0}
+                lateSubmissions={analytics.summary.lateSubmissions || 0}
+                pendingReports={analytics.summary.pendingReports || 0}
                 complianceRate={analytics.summary.complianceRate || 0}
+                openBlockersCount={analytics.summary.openBlockersCount || 0}
                 isDark={isDark}
               />
             ) : null}
 
-            {/* Analytics Charts */}
+            {/* Layer 2: Visual Insights Grid — Donut, Bar, Line Charts */}
             {loading ? (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <ChartSkeleton isDark={isDark} />
                 <ChartSkeleton isDark={isDark} />
                 <ChartSkeleton isDark={isDark} />
                 <ChartSkeleton isDark={isDark} />
               </div>
             ) : analytics ? (
               <AnalyticsCharts key={analyticsKey} data={analytics} theme={theme} />
-            ) : null}
-
-            {/* Submission Compliance */}
-            {loading ? (
-              <div className={`rounded-xl border ${isDark ? 'bg-zinc-900/20 border-zinc-800' : 'bg-white border-zinc-200'}`}>
-                <div className={`px-6 py-4 border-b ${isDark ? 'border-zinc-800' : 'border-zinc-200'}`}>
-                  <div className={`h-4 w-48 animate-pulse rounded ${isDark ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
-                </div>
-              </div>
-            ) : analytics?.submissionCompliance ? (
-              <SubmissionCompliance data={analytics.submissionCompliance} isDark={isDark} />
             ) : null}
 
             {/* Projects List */}
@@ -408,8 +407,8 @@ const ManagerDashboard = () => {
                   )}
                 </h2>
                 <FilterBar
-                  filters={filters}
-                  users={users}
+                  filters={{ user: selectedMember, project: selectedProject, startDate: getDateRange(timePeriod).startDate || '', endDate: getDateRange(timePeriod).endDate || '' }}
+                  users={users.filter(u => u.role !== 'Manager')}
                   projects={projects}
                   isDark={isDark}
                   onFilterChange={handleFilterChange}
