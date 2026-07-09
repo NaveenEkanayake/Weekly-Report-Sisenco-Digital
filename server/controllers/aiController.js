@@ -56,20 +56,20 @@ const localAnalyzeReports = (reports, message) => {
   if (query.includes('summary') || query.includes('summarize') || query.includes('overview') || query.includes('what happened') || query.includes('team activity') || query.includes('status')) {
     let out = `## 📋 Team Activity Summary\n\n`;
     out += `**${totalReports} total reports** in the system:\n`;
-    out += `- ✅ **${submittedReports.length}** Submitted/Reviewed\n`;
-    out += `- 📝 **${draftReports.length}** Drafts\n`;
-    out += `- ⚠️ **${activeBlockers.length}** with active blockers\n`;
-    out += `- ⏱️ **${totalHours}h** total hours logged\n\n`;
+    out += `-  **${submittedReports.length}** Submitted/Reviewed\n`;
+    out += `-  **${draftReports.length}** Drafts\n`;
+    out += `-  **${activeBlockers.length}** with active blockers\n`;
+    out += `-  **${totalHours}h** total hours logged\n\n`;
 
     if (Object.keys(byProject).length > 0) {
-      out += `### 🛠️ Work by Project\n`;
+      out += `###  Work by Project\n`;
       Object.entries(byProject).forEach(([proj, data]) => {
         out += `- **${proj}**: ${data.reports.length} report(s), ${data.hours}h logged\n`;
       });
     }
 
     if (activeBlockers.length > 0) {
-      out += `\n### ⚠️ Active Blockers\n`;
+      out += `\n### Active Blockers\n`;
       activeBlockers.slice(0, 5).forEach(r => {
         out += `- **${r.user?.name || 'Unknown'}**: "${r.blockers.substring(0, 80)}..."\n`;
       });
@@ -80,9 +80,9 @@ const localAnalyzeReports = (reports, message) => {
   // ── Blockers ─────────────────────────────────────────────────────────
   if (query.includes('block') || query.includes('challenge') || query.includes('issue') || query.includes('problem') || query.includes('impediment') || query.includes('stuck')) {
     if (activeBlockers.length === 0) {
-      return `## ✅ No Active Blockers\n\nGreat news! No team members are currently reporting any blockers. All projects appear to be running smoothly.`;
+      return `## No Active Blockers\n\nGreat news! No team members are currently reporting any blockers. All projects appear to be running smoothly.`;
     }
-    let out = `## ⚠️ Active Blockers Report\n\n**${activeBlockers.length} blocker(s)** currently reported:\n\n`;
+    let out = `##  Active Blockers Report\n\n**${activeBlockers.length} blocker(s)** currently reported:\n\n`;
     activeBlockers.forEach((r, i) => {
       out += `### ${i + 1}. ${r.user?.name || 'Unknown'}\n`;
       out += `- **Project**: ${r.project?.name || 'N/A'}\n`;
@@ -94,7 +94,7 @@ const localAnalyzeReports = (reports, message) => {
 
   // ── Hours / Workload ──────────────────────────────────────────────────
   if (query.includes('hour') || query.includes('workload') || query.includes('time') || query.includes('effort')) {
-    let out = `## ⏱️ Hours & Workload Distribution\n\n`;
+    let out = `## Hours & Workload Distribution\n\n`;
     out += `- **Total hours logged**: ${totalHours}h\n`;
     out += `- **Average per report**: ${avgHours}h\n\n`;
     out += `### By Project\n`;
@@ -117,9 +117,9 @@ const localAnalyzeReports = (reports, message) => {
   // ── Projects ──────────────────────────────────────────────────────────
   if (query.includes('project') || query.includes('category') || query.includes('client')) {
     if (Object.keys(byProject).length === 0) {
-      return `## 📂 Projects\n\nNo project data available in the current reports.`;
+      return `## Projects\n\nNo project data available in the current reports.`;
     }
-    let out = `## 📂 Work by Project\n\n`;
+    let out = `## Work by Project\n\n`;
     Object.entries(byProject).sort((a, b) => b[1].reports.length - a[1].reports.length).forEach(([proj, data]) => {
       out += `### ${proj}\n`;
       out += `- **Reports**: ${data.reports.length}\n`;
@@ -143,7 +143,7 @@ const localAnalyzeReports = (reports, message) => {
       const rate = ((data.submitted / Math.max(data.reports.length, 1)) * 100).toFixed(0);
       out += `### ${name}\n`;
       out += `- **Reports**: ${data.reports.length} (${rate}% submitted)\n`;
-      if (data.blockers > 0) out += `- ⚠️ **Active blockers**: ${data.blockers}\n`;
+      if (data.blockers > 0) out += `- **Active blockers**: ${data.blockers}\n`;
       out += '\n';
     });
     return out;
@@ -152,11 +152,11 @@ const localAnalyzeReports = (reports, message) => {
   // ── Late / Compliance ─────────────────────────────────────────────────
   if (query.includes('late') || query.includes('missing') || query.includes('compliance') || query.includes('submitted') || query.includes('pending')) {
     const compRate = totalReports > 0 ? ((submittedReports.length / totalReports) * 100).toFixed(1) : 0;
-    let out = `## 📊 Submission Compliance\n\n`;
+    let out = `## Submission Compliance\n\n`;
     out += `- **Compliance rate**: ${compRate}%\n`;
-    out += `- ✅ Submitted/Reviewed: ${submittedReports.length}\n`;
-    out += `- 📝 Drafts: ${draftReports.length}\n`;
-    out += `- ⏰ Late: ${lateReports.length}\n\n`;
+    out += `-  Submitted/Reviewed: ${submittedReports.length}\n`;
+    out += `-  Drafts: ${draftReports.length}\n`;
+    out += `- Late: ${lateReports.length}\n\n`;
     if (lateReports.length > 0) {
       out += `### Late Submissions\n`;
       lateReports.forEach(r => {
@@ -169,8 +169,8 @@ const localAnalyzeReports = (reports, message) => {
   // ── Tasks / What was worked on ────────────────────────────────────────
   if (query.includes('task') || query.includes('work') || query.includes('accomplish') || query.includes('complet') || query.includes('done') || query.includes('last week') || query.includes('this week')) {
     const recent = [...reports].sort((a, b) => new Date(b.weekStartDate) - new Date(a.weekStartDate)).slice(0, 10);
-    if (recent.length === 0) return `## 📝 Tasks\n\nNo task data available yet.`;
-    let out = `## 📝 Recent Tasks Completed\n\n`;
+    if (recent.length === 0) return `##  Tasks\n\nNo task data available yet.`;
+    let out = `##  Recent Tasks Completed\n\n`;
     recent.forEach(r => {
       out += `### ${r.user?.name || 'Unknown'} — ${new Date(r.weekStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}\n`;
       out += `**Project**: ${r.project?.name || 'N/A'}\n\n`;
@@ -181,19 +181,19 @@ const localAnalyzeReports = (reports, message) => {
 
   // ── Recommendations ───────────────────────────────────────────────────
   if (query.includes('recommend') || query.includes('suggest') || query.includes('improve') || query.includes('advice') || query.includes('help')) {
-    let out = `## 💡 AI Recommendations\n\n`;
-    if (activeBlockers.length > 0) out += `- 🔴 **Address ${activeBlockers.length} blocker(s)** — schedule unblocking sessions with affected members.\n`;
-    if (draftReports.length > 0) out += `- 📝 **Follow up on ${draftReports.length} draft report(s)** — remind members to submit before the deadline.\n`;
-    if (lateReports.length > 0) out += `- ⏰ **${lateReports.length} late submission(s)** — consider setting earlier soft deadlines.\n`;
+    let out = `##  AI Recommendations\n\n`;
+    if (activeBlockers.length > 0) out += `-  **Address ${activeBlockers.length} blocker(s)** — schedule unblocking sessions with affected members.\n`;
+    if (draftReports.length > 0) out += `-  **Follow up on ${draftReports.length} draft report(s)** — remind members to submit before the deadline.\n`;
+    if (lateReports.length > 0) out += `-  **${lateReports.length} late submission(s)** — consider setting earlier soft deadlines.\n`;
     const compRate = totalReports > 0 ? (submittedReports.length / totalReports) * 100 : 0;
-    if (compRate < 80) out += `- 📊 **Compliance at ${compRate.toFixed(0)}%** — below 80%. Consider automated reminders.\n`;
-    if (compRate >= 80) out += `- ✅ **Compliance at ${compRate.toFixed(0)}%** — team is performing well. Keep it up!\n`;
+    if (compRate < 80) out += `-  **Compliance at ${compRate.toFixed(0)}%** — below 80%. Consider automated reminders.\n`;
+    if (compRate >= 80) out += `-  **Compliance at ${compRate.toFixed(0)}%** — team is performing well. Keep it up!\n`;
     if (out.trim().split('\n').length <= 2) out += `- ✨ Everything looks good! The team is on track.\n`;
     return out;
   }
 
   // ── Generic / Fallback ────────────────────────────────────────────────
-  return `## 🤖 AI Assistant (Local Mode)\n\nI found **${totalReports} reports** in the database. Here's what I can help you with:\n\n` +
+  return `## AI Assistant (Local Mode)\n\nI found **${totalReports} reports** in the database. Here's what I can help you with:\n\n` +
     `| Query | Example |\n|---|---|\n` +
     `| Summary | "Summarize team activity" |\n` +
     `| Blockers | "Show active blockers" |\n` +
