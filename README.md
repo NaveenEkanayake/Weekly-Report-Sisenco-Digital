@@ -1,11 +1,6 @@
 # Weekly Report Submitter — Sisenco Digital
 
 <!-- Logo with a clickable link -->
-<p align="center">
-  <a href="https://github.com/NaveenEkanayake/Weekly-Report-Sisenco-Digital">
-    <img src="https://github.com/NaveenEkanayake/Weekly-Report-Sisenco-Digital/raw/main/client/src/assets/images/logo.png" alt="Sisenco Digital Logo" width="50%">
-  </a>
-</p>
 
 A premium full-stack web application designed for Sisenco Digital to manage, submit, and audit weekly team progress reports with an integrated Gemini AI core for conversational analytics.
 
